@@ -265,7 +265,7 @@ Declare an MCP stdio server that Finch's MCP Bridge will start when your extensi
 
 ## Links
 
-- [Finch Extension Developer Guide](https://finchwork.app/docs/extensions)
+- [Finch Mini Tool Docs](https://finchwork.app/en/docs/minitools)
 - [Finch Desktop App](https://finchwork.app)
 
 ## License
