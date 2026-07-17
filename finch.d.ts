@@ -115,6 +115,7 @@ declare module 'finch' {
    * - `ctx.composerActions` — Composer 工具栏按钮
    * - `ctx.storage` — 私有 KV 存储
    * - `ctx.secrets` — 只读密钥
+   * - `ctx.oauth` — 隔离的 OAuth 连接与授权请求
    * - `ctx.logger` — 带前缀日志
    * - `ctx.app` — Finch App 基本信息（只读）
    * - `ctx.session` — 当前 session（只读）
@@ -173,7 +174,7 @@ declare module 'finch' {
 
     /**
      * Composer 工具栏按钮注册表。
-     * manifest 的 `contributes.composerActions` 声明按钮槽位（icon / tooltip / hoverText），
+     * manifest 的 `contributes.composerActions` 声明按钮槽位（icon / tooltip），
      * `register()` 提供动态数据（badge / menu / execute）。
      * `actionId` 必须与 manifest 中的 `id` 匹配。
      *
@@ -337,6 +338,9 @@ declare module 'finch' {
 
     /** 对 manifest `permissions.secrets` 声明的密钥的只读访问。 */
     readonly secrets: Secrets;
+
+    /** OAuth Broker：凭证按小工具隔离，原始 token 不会暴露。 */
+    readonly oauth: OAuth;
 
     /** Finch App 基本信息（只读）。 */
     readonly app: App;
@@ -804,6 +808,8 @@ declare module 'finch' {
     readonly separator?: boolean;
     /** 右侧的辅助文字（如快捷键、状态描述）。 */
     readonly description?: string;
+    /** 悬浮该菜单项时通过 HoverCard 展示的较长纯文本说明，支持换行。 */
+    readonly hoverText?: string;
     /** 菜单项左侧小图标，一个 {@link IconRef}（内置 Lucide 名或 `ext:<packId>/<iconId>`）。 */
     readonly iconName?: IconRef;
     /**
@@ -839,12 +845,12 @@ declare module 'finch' {
   /**
    * Composer Action 数据提供器。
    *
-   * manifest 中的 `contributes.composerActions` 声明按钮槽位（id / icon / tooltip / hoverText），
+   * manifest 中的 `contributes.composerActions` 声明按钮槽位（id / icon / tooltip），
    * activate() 里通过 `finch.composerActions.register(id, provider)` 绑定动态数据。
    *
    * @example
    * // package.json → finch.contributes.composerActions
-   * // [{ "id": "git-branch", "icon": "GitBranch", "tooltip": "切换分支", "hoverText": "查看并切换当前仓库的 Git 分支。" }]
+   * // [{ "id": "git-branch", "icon": "GitBranch", "tooltip": "切换分支" }]
    *
    * finch.composerActions.register('git-branch', {
    *   async getBadge({ cwd }) {
@@ -854,7 +860,12 @@ declare module 'finch' {
    *     return cwd ? 'GitBranch' : 'MessageCircle';
    *   },
    *   async getMenu({ cwd }) {
-   *     return listBranches(cwd).map(b => ({ id: b, label: b, iconName: 'GitBranch' }));
+   *     return listBranches(cwd).map(b => ({
+   *       id: b,
+   *       label: b,
+   *       iconName: 'GitBranch',
+   *       hoverText: `切换到 ${b} 分支`,
+   *     }));
    *   },
    *   async execute({ cwd }, branchName, actions) {
    *     await checkout(cwd, branchName);
@@ -1414,6 +1425,56 @@ declare module 'finch' {
     get(key: string): Promise<string | undefined>;
   }
 
+  /** OAuth 2.0 Authorization Code + PKCE 公共客户端配置。 */
+  export interface OAuthProviderConfig {
+    /** 稳定 provider id，必须在 manifest `permissions.oauth` 中声明。 */
+    id: string;
+    name: string;
+    clientId: string;
+    authorizationEndpoint: string;
+    tokenEndpoint: string;
+    scopes: string[];
+    /** `ctx.oauth.request()` 允许访问的 HTTPS origin。 */
+    resourceOrigins: string[];
+    revocationEndpoint?: string;
+    authorizationParams?: Record<string, string>;
+  }
+
+  export interface OAuthStatus {
+    providerId: string;
+    connected: boolean;
+    scopes: string[];
+    displayName?: string;
+    email?: string;
+    expiresAt?: number;
+  }
+
+  export interface OAuthRequestInit {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }
+
+  export interface OAuthResponse {
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    body: string;
+  }
+
+  /**
+   * 小工具私有 OAuth Broker。
+   *
+   * Finch 使用系统浏览器、loopback callback 与 PKCE 完成登录，自动加密保存和刷新凭证。
+   * `request()` 由主进程注入 Authorization；access token 与 refresh token 永不返回小工具。
+   */
+  export interface OAuth {
+    connect(provider: OAuthProviderConfig): Promise<OAuthStatus>;
+    getStatus(provider: OAuthProviderConfig): Promise<OAuthStatus>;
+    disconnect(provider: OAuthProviderConfig): Promise<void>;
+    request(provider: OAuthProviderConfig, url: string, init?: OAuthRequestInit): Promise<OAuthResponse>;
+  }
+
   // ════════════════════════════════════════════════════════════════════════════
   // § 9  finch.logger — 带前缀的日志
   // ════════════════════════════════════════════════════════════════════════════
@@ -1516,7 +1577,7 @@ declare module 'finch' {
    *     "contributes": {
    *       "tools": true,
    *       "composerActions": [
-   *         { "id": "my-btn", "icon": "Star", "tooltip": "My Button", "hoverText": "A longer description shown on hover." }
+   *         { "id": "my-btn", "icon": "Star", "tooltip": "My Button" }
    *       ]
    *     },
    *     "permissions": {
@@ -1532,10 +1593,7 @@ declare module 'finch' {
    * {
    *   "name": "我的扩展",
    *   "description": "做一些有用的事。",
-   *   "systemPrompt": "当用户询问 X 时，优先使用这个扩展的工具。",
-   *   "composerActions": {
-   *     "my-btn": { "tooltip": "我的按钮", "hoverText": "悬浮时展示的详细说明。" }
-   *   }
+   *   "systemPrompt": "当用户询问 X 时，优先使用这个扩展的工具。"
    * }
    *
    * @deprecated Use {@link MiniToolManifest} for new mini tools.
@@ -1653,10 +1711,7 @@ declare module 'finch' {
      * `'settings'`）或本扩展运行时图标包里的 icon id / `ext:<packId>/<iconId>`。
      */
     readonly icon?: IconRef;
-    /** 短标签，用作无障碍名称；未配置 hoverText 时也作为默认 Tooltip。 */
     readonly tooltip?: string;
-    /** 悬浮时通过 HoverCard 展示的较长纯文本说明，支持换行。 */
-    readonly hoverText?: string;
   }
 
   /**
@@ -1672,6 +1727,8 @@ declare module 'finch' {
     readonly shell?: boolean;
     /** 可访问的密钥 key 列表（在 Finch 设置中由用户填写）。 */
     readonly secrets?: string[];
+    /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
+    readonly oauth?: string[];
   }
 
   // ════════════════════════════════════════════════════════════════════════════
