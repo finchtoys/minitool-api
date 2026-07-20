@@ -1092,6 +1092,17 @@ declare module 'finch' {
   // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
   // "尚未实现" 错误。`ctx.ui.showToast` 会显示原生 Toast；`ctx.ui.showMessage` 映射为 Toast。全局 namespace 不再暴露。
 
+  export type AlwaysOnTopLevel =
+    | 'normal'
+    | 'floating'
+    | 'torn-off-menu'
+    | 'modal-panel'
+    | 'main-menu'
+    | 'status'
+    | 'pop-up-menu'
+    | 'screen-saver'
+    | 'dock';
+
   /**
    * Canvas 窗口选项。开发者只提供 `entry`（一段 canvas 脚本路径），不写 HTML。
    */
@@ -1123,6 +1134,10 @@ declare module 'finch' {
     hiddenInMissionControl?: boolean;
     /** 在所有桌面 Space（含全屏空间）显示，切换桌面时窗口跟随，默认 false。仅 macOS，其他平台忽略。 */
     visibleOnAllWorkspaces?: boolean;
+    /** macOS 原生窗口置顶层级。其他平台忽略。 */
+    alwaysOnTopLevel?: AlwaysOnTopLevel;
+    /** 相对置顶层级。仅 macOS 且指定 `alwaysOnTopLevel` 时生效。 */
+    alwaysOnTopRelativeLevel?: number;
     /** 传给脚本 `init({ initialData })` 的初始数据（会 JSON 序列化）。 */
     initialData?: unknown;
   }
@@ -1145,7 +1160,7 @@ declare module 'finch' {
    * ```
    *
    * 外壳注入的 `finch` 桥（Canvas 段可调用）：
-   * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v)` /
+   * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v, level?, relativeLevel?)` /
    * `finch.window.setPosition(x,y)` / `finch.window.getDisplays()` / `finch.window.setClickThrough(v)` /
    * `finch.window.close()`。
    */
@@ -1154,7 +1169,7 @@ declare module 'finch' {
     readonly id: string;
     show(): void;
     hide(): void;
-    setAlwaysOnTop(value: boolean): void;
+    setAlwaysOnTop(value: boolean, level?: AlwaysOnTopLevel, relativeLevel?: number): void;
     setPosition(x: number, y: number): void;
     setSize(width: number, height: number): void;
     setClickThrough(value: boolean): void;
@@ -1312,6 +1327,8 @@ declare module 'finch' {
     readonly runningCount: number;
     readonly waitingCount: number;
     readonly unreadCount: number;
+    /** 最近一条当前仍未读的会话；没有未读会话时为 undefined。 */
+    readonly latestUnreadSessionId?: string;
     readonly updatedAt: string;
   }
 
@@ -1425,13 +1442,18 @@ declare module 'finch' {
     get(key: string): Promise<string | undefined>;
   }
 
-  /** OAuth 2.0 Authorization Code + PKCE 公共客户端配置。 */
+  /** OAuth 2.0 公共客户端配置，支持 Authorization Code + PKCE 与 Device Flow。 */
   export interface OAuthProviderConfig {
     /** 稳定 provider id，必须在 manifest `permissions.oauth` 中声明。 */
     id: string;
     name: string;
+    /** 小工具开发者提供的公开 Client ID；终端用户无需配置。 */
     clientId: string;
+    /** 默认 authorization_code（Authorization Code + PKCE）。 */
+    flow?: 'authorization_code' | 'device_code';
     authorizationEndpoint: string;
+    /** flow 为 device_code 时必填。 */
+    deviceAuthorizationEndpoint?: string;
     tokenEndpoint: string;
     scopes: string[];
     /** `ctx.oauth.request()` 允许访问的 HTTPS origin。 */
@@ -1465,8 +1487,8 @@ declare module 'finch' {
   /**
    * 小工具私有 OAuth Broker。
    *
-   * Finch 使用系统浏览器、loopback callback 与 PKCE 完成登录，自动加密保存和刷新凭证。
-   * `request()` 由主进程注入 Authorization；access token 与 refresh token 永不返回小工具。
+   * Finch 使用 Authorization Code + PKCE 或 Device Flow 完成登录，自动加密保存和刷新凭证。
+   * `request()` 由主进程注入 Authorization；access token、refresh token 与 device code 永不返回小工具。
    */
   export interface OAuth {
     connect(provider: OAuthProviderConfig): Promise<OAuthStatus>;
