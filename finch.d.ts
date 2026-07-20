@@ -1131,16 +1131,8 @@ declare module 'finch' {
   // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
   // "尚未实现" 错误。`ctx.ui.showToast` 会显示原生 Toast；`ctx.ui.showMessage` 映射为 Toast。全局 namespace 不再暴露。
 
-  export type AlwaysOnTopLevel =
-    | 'normal'
-    | 'floating'
-    | 'torn-off-menu'
-    | 'modal-panel'
-    | 'main-menu'
-    | 'status'
-    | 'pop-up-menu'
-    | 'screen-saver'
-    | 'dock';
+  /** 公开的 macOS 置顶层级，仅支持常规与浮动窗口。 */
+  export type AlwaysOnTopLevel = 'normal' | 'floating';
 
   /**
    * Canvas 窗口选项。开发者只提供 `entry`（一段 canvas 脚本路径），不写 HTML。
