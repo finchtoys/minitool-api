@@ -1486,6 +1486,8 @@ declare module 'finch' {
     /** 稳定 provider id，必须在 manifest `permissions.oauth` 中声明。 */
     id: string;
     name: string;
+    /** 小工具包内 Provider PNG 品牌图标的相对路径，例如 "assets/github.png"。 */
+    icon?: string;
     /** 小工具开发者提供的公开 Client ID；终端用户无需配置。 */
     clientId: string;
     /** 默认 authorization_code（Authorization Code + PKCE）。 */
