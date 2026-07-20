@@ -797,6 +797,40 @@ declare module 'finch' {
     fillComposer(text: string, options?: ComposerFillOptions): Promise<void>;
   }
 
+  /**
+   * 菜单项右侧的独立操作按钮。悬停该菜单行时才显示，用于承载「跳转 / 打开 / 复制 /
+   * 删除」等**与选中该行本身不同**的次要操作。
+   *
+   * 交互约定：
+   * - 仅在鼠标悬停在菜单行上时显示；未悬停时隐藏。
+   * - 当按钮显示时，会**顶替**该行右侧的 `description` 文字（两者互斥展示）。
+   * - 点击按钮**不会**触发该行的 `execute(itemId)`，而是单独以
+   *   `execute(ctx, '__trailing__:<button.id>', actions)` 回调，插件据此处理跳转或其它逻辑；
+   *   事件不冒泡到菜单行，也不关闭菜单（除非你在处理函数里主动 `actions.composer.*`）。
+   * - **子菜单项（带 `children` 的项）不支持右侧按钮**，此时该字段被忽略。
+   *
+   * @example
+   * async getMenu() {
+   *   return [
+   *     { id: 'main', label: 'main', trailingButton: { id: 'open', iconName: 'ExternalLink', tooltip: '在浏览器打开' } },
+   *   ];
+   * }
+   * async execute(ctx, itemId, actions) {
+   *   if (itemId === '__trailing__:open') { openInBrowser(); return; }
+   *   if (itemId === 'main') { await checkout('main'); }
+   * }
+   */
+  export interface ComposerActionMenuItemTrailingButton {
+    /** 按钮唯一 id。点击时以 `execute(ctx, '__trailing__:<id>', actions)` 回调。 */
+    readonly id: string;
+    /** 按钮图标 {@link IconRef}（内置 Lucide 名或 `ext:<packId>/<iconId>`）。 */
+    readonly iconName: IconRef;
+    /** 悬停按钮时的 tooltip 文字。 */
+    readonly tooltip?: string;
+    /** 禁用该按钮（灰显、不可点击）。 */
+    readonly disabled?: boolean;
+  }
+
   /** Composer 按钮下拉菜单中的一项。 */
   export interface ComposerActionMenuItem {
     readonly id: string;
@@ -806,8 +840,13 @@ declare module 'finch' {
     readonly disabled?: boolean;
     /** 在此项之前插入分割线。 */
     readonly separator?: boolean;
-    /** 右侧的辅助文字（如快捷键、状态描述）。 */
+    /** 右侧的辅助文字（如快捷键、状态描述）。若同时提供 `trailingButton`，悬停时按钮顶替此文字。 */
     readonly description?: string;
+    /**
+     * 菜单项右侧的独立操作按钮，悬停菜单行时显示，点击触发 `execute('__trailing__:<id>')`。
+     * 子菜单项（带 `children`）不支持，会被忽略。详见 {@link ComposerActionMenuItemTrailingButton}。
+     */
+    readonly trailingButton?: ComposerActionMenuItemTrailingButton;
     /** 悬浮该菜单项时通过 HoverCard 展示的较长纯文本说明，支持换行。 */
     readonly hoverText?: string;
     /** 菜单项左侧小图标，一个 {@link IconRef}（内置 Lucide 名或 `ext:<packId>/<iconId>`）。 */
