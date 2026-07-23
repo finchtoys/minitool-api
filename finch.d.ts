@@ -1484,6 +1484,10 @@ declare module 'finch' {
     clientId: string;
     /** 默认 authorization_code（Authorization Code + PKCE）。 */
     flow?: 'authorization_code' | 'device_code';
+    /** 默认 loopback；custom 使用开发者声明的 HTTPS callbackUrl。 */
+    callbackStrategy?: 'loopback' | 'custom';
+    /** callbackStrategy 为 custom 时必填，且必须为 HTTPS URL。 */
+    callbackUrl?: string;
     authorizationEndpoint: string;
     /** flow 为 device_code 时必填。 */
     deviceAuthorizationEndpoint?: string;
@@ -1517,6 +1521,21 @@ declare module 'finch' {
     body: string;
   }
 
+  export interface OAuthInteractiveAuthorization {
+    /** Manifest permissions.oauth 中声明的权限 id。 */
+    providerId: string;
+    providerName: string;
+    /** 已包含 state 与 redirect_uri 的完整 HTTPS 授权 URL。 */
+    authorizationUrl: string;
+    state: string;
+    /** 协议客户端注册的 HTTPS callback。 */
+    callbackUrl: string;
+  }
+
+  export interface OAuthAuthorizationCode {
+    code: string;
+  }
+
   /**
    * 小工具私有 OAuth Broker。
    *
@@ -1525,6 +1544,8 @@ declare module 'finch' {
    */
   export interface OAuth {
     connect(provider: OAuthProviderConfig): Promise<OAuthStatus>;
+    /** 为 MCP SDK 等外部协议客户端复用 Finch 原生授权 UI、浏览器与 callback。 */
+    authorize(input: OAuthInteractiveAuthorization): Promise<OAuthAuthorizationCode>;
     getStatus(provider: OAuthProviderConfig): Promise<OAuthStatus>;
     disconnect(provider: OAuthProviderConfig): Promise<void>;
     request(provider: OAuthProviderConfig, url: string, init?: OAuthRequestInit): Promise<OAuthResponse>;
