@@ -452,6 +452,8 @@ declare module 'finch' {
     readonly containerId: string;
     readonly title?: string;
     readonly activity?: MinitoolSessionActivity;
+    /** 后台/Bot Session 默认 acceptCalls；可显式设为 ask。 */
+    readonly permissionMode?: 'ask' | 'acceptCalls';
     /** 提供时，与 Session 创建原子接收；失败不会留下 ghost Session。 */
     readonly initialMessage?: SessionUserMessage;
   }
