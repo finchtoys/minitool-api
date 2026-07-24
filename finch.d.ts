@@ -453,13 +453,28 @@ declare module 'finch' {
     readonly delivery?: 'queue';
   }
 
-  export interface SessionSendReceipt {
-    readonly sessionId: string;
-    readonly turnId: string;
-    readonly clientMessageId: string;
-    readonly state: 'accepted' | 'duplicate';
-    readonly queued: boolean;
-  }
+  export type SessionSendReceipt =
+    | {
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly clientMessageId: string;
+        readonly state: 'accepted' | 'duplicate';
+        readonly queued: boolean;
+        /** 调用后该 Session 内 running + queued 的数量。 */
+        readonly pendingCount: number;
+        /** 前方 turn 数量，从 0 开始；0 表示正在运行或即将派发。 */
+        readonly queuePosition?: number;
+      }
+    | {
+        readonly sessionId: string;
+        readonly state: 'rejected';
+        readonly queued: false;
+        readonly code: 'queue_full';
+        readonly scope: 'session' | 'minitool';
+        readonly pendingCount: number;
+        readonly limit: number;
+        readonly retryAfterMs: number;
+      };
 
   export type SessionBridgeEvent =
     | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
