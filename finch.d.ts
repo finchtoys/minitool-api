@@ -428,8 +428,21 @@ declare module 'finch' {
     readonly updatedAt: string;
   }
 
+  export type SessionMessageAttachmentKind = 'image' | 'pdf' | 'text' | 'file';
+
+  export interface SessionMessageAttachment {
+    readonly name: string;
+    readonly mimeType: string;
+    /** Base64 文件内容；send() 返回前 Finch 会复制到受管暂存区。 */
+    readonly data: string;
+    readonly kind?: SessionMessageAttachmentKind;
+  }
+
   export interface SessionUserMessage {
+    /** 有附件时允许为空字符串。 */
     readonly text: string;
+    /** 每条消息最多 10 个附件，单个及总大小均不超过 20 MB。 */
+    readonly attachments?: SessionMessageAttachment[];
     /** 外部平台的稳定不透明幂等键；不要放 token、消息正文或个人信息。 */
     readonly idempotencyKey: string;
   }
@@ -476,11 +489,16 @@ declare module 'finch' {
         readonly retryAfterMs: number;
       };
 
-  export type SessionBridgeEvent =
+  export type SessionDurableEvent =
     | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.waiting'; readonly sessionId: string; readonly turnId: string; readonly reason: 'permission' | 'question' | 'form'; readonly createdAt: string };
+
+  export type SessionBridgeEvent =
+    | SessionDurableEvent
+    /** 仅实时投递，不写入 listEvents()；断线后使用最终消息恢复。 */
+    | { readonly type: 'assistant.delta'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly delta: string; readonly createdAt: string };
 
   export interface SessionEventQuery {
     readonly sessionId: string;
@@ -489,7 +507,7 @@ declare module 'finch' {
   }
 
   export interface SessionEventPage {
-    readonly events: SessionBridgeEvent[];
+    readonly events: SessionDurableEvent[];
     readonly nextCursor?: number;
   }
 
