@@ -348,6 +348,9 @@ declare module 'finch' {
     /** 当前 session 信息（只读快照）。 */
     readonly session: SessionInfo;
 
+    /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
+    readonly sessions: Sessions;
+
     /** 当前 Space / Workspace 信息（只读）。 */
     readonly workspace: WorkspaceInfo;
   }
@@ -410,6 +413,78 @@ declare module 'finch' {
     /** 有效工作目录（Space.directoryPath 或 workspace.projectPath）。 */
     readonly cwd: string | undefined;
     readonly model: string;
+  }
+
+  export type MinitoolSessionActivity = 'interactive' | 'background';
+
+  /** 由 Finch 写入的小工具 Session 元数据；owner 与 minitoolId 不可伪造。 */
+  export interface MinitoolSessionDescriptor {
+    readonly sessionId: string;
+    readonly owner: { readonly type: 'minitool'; readonly minitoolId: string };
+    readonly placement: { readonly type: 'minitool'; readonly minitoolId: string; readonly containerId: string };
+    readonly activity: MinitoolSessionActivity;
+    readonly state: { readonly pinned: boolean; readonly archived: boolean };
+    readonly createdAt: string;
+    readonly updatedAt: string;
+  }
+
+  export interface SessionUserMessage {
+    readonly text: string;
+    /** 外部平台的稳定不透明幂等键；不要放 token、消息正文或个人信息。 */
+    readonly idempotencyKey: string;
+  }
+
+  export interface SessionCreateOptions {
+    /** 必须在 manifest contributes.sessionContainers 中声明。 */
+    readonly containerId: string;
+    readonly title?: string;
+    readonly activity?: MinitoolSessionActivity;
+    /** 提供时，与 Session 创建原子接收；失败不会留下 ghost Session。 */
+    readonly initialMessage?: SessionUserMessage;
+  }
+
+  export interface SessionListOptions {
+    readonly containerId?: string;
+    readonly includeArchived?: boolean;
+  }
+
+  export interface SessionSendOptions {
+    /** Phase 1 仅支持严格 FIFO queue。 */
+    readonly delivery?: 'queue';
+  }
+
+  export interface SessionSendReceipt {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly clientMessageId: string;
+    readonly state: 'accepted' | 'duplicate';
+    readonly queued: boolean;
+  }
+
+  export type SessionBridgeEvent =
+    | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
+    | { readonly sequence: number; readonly type: 'turn.completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly createdAt: string }
+    | { readonly sequence: number; readonly type: 'turn.failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly createdAt: string }
+    | { readonly sequence: number; readonly type: 'turn.waiting'; readonly sessionId: string; readonly turnId: string; readonly reason: 'permission' | 'question' | 'form'; readonly createdAt: string };
+
+  export interface SessionEventQuery {
+    readonly sessionId: string;
+    readonly after?: number;
+    readonly limit?: number;
+  }
+
+  export interface SessionEventPage {
+    readonly events: SessionBridgeEvent[];
+    readonly nextCursor?: number;
+  }
+
+  export interface Sessions {
+    create(options: SessionCreateOptions): Promise<MinitoolSessionDescriptor>;
+    get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
+    list(options?: SessionListOptions): Promise<MinitoolSessionDescriptor[]>;
+    send(sessionId: string, message: SessionUserMessage, options?: SessionSendOptions): Promise<SessionSendReceipt>;
+    onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
+    listEvents(options: SessionEventQuery): Promise<SessionEventPage>;
   }
 
   /** 当前激活 Space 或默认 Workspace 的信息。 */
@@ -1674,6 +1749,13 @@ declare module 'finch' {
    *
    * @deprecated Use {@link MiniToolManifest} for new mini tools.
    */
+  export interface SessionContainerContribution {
+    /** 当前小工具内稳定且唯一的容器 id。 */
+    readonly id: string;
+    readonly title?: LocalizedString;
+    readonly description?: LocalizedString;
+  }
+
   export interface ExtensionManifest {
     /** 必须为 `1`。 */
     readonly manifestVersion: 1;
@@ -1720,6 +1802,8 @@ declare module 'finch' {
        * 需要 MCP 桥接插件（提供 `mcp.client`）已安装并启用。
        */
       readonly mcpServers?: McpServerContribution[];
+      /** ctx.sessions.create() 可使用的 owner-scoped 容器声明。 */
+      readonly sessionContainers?: readonly SessionContainerContribution[];
     };
     readonly permissions?: ExtensionPermissions;
     /**
@@ -1805,6 +1889,8 @@ declare module 'finch' {
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
     readonly oauth?: string[];
+    /** 是否允许创建并收发当前小工具自己拥有的 Session。 */
+    readonly sessions?: boolean;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
