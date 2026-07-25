@@ -454,6 +454,8 @@ declare module 'finch' {
     readonly title?: string;
     /** 引用 manifest contributes.agentProfiles 中静态声明的 Agent 角色。 */
     readonly profileId?: string;
+    /** 继承发起调用的 Chat/Space 上下文；仅在 Agent tool 调用作用域内可用。 */
+    readonly context?: 'caller';
     readonly activity?: MinitoolSessionActivity;
     /** 后台/Bot Session 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
