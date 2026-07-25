@@ -423,6 +423,7 @@ declare module 'finch' {
     readonly owner: { readonly type: 'minitool'; readonly minitoolId: string };
     readonly placement: { readonly type: 'minitool'; readonly minitoolId: string; readonly containerId: string };
     readonly activity: MinitoolSessionActivity;
+    readonly profileId?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
     readonly createdAt: string;
     readonly updatedAt: string;
@@ -451,6 +452,8 @@ declare module 'finch' {
     /** 必须在 manifest contributes.sessionContainers 中声明。 */
     readonly containerId: string;
     readonly title?: string;
+    /** 引用 manifest contributes.agentProfiles 中静态声明的 Agent 角色。 */
+    readonly profileId?: string;
     readonly activity?: MinitoolSessionActivity;
     /** 后台/Bot Session 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
