@@ -899,6 +899,11 @@ declare module 'finch' {
   export interface ComposerActionActions {
     /** Composer 域 helper：内联 confirm、填充输入框等。 */
     composer: ComposerActionComposerActions;
+    /** 用户触发 ComposerAction 时可用的 App 导航能力。 */
+    navigation: {
+      /** 在当前 Finch 窗口打开已有 Session。 */
+      openSession(sessionId: string): Promise<void>;
+    };
     /**
      * @deprecated 请使用 `actions.composer.fill(text, options)`。
      *
