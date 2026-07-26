@@ -540,11 +540,23 @@ declare module 'finch' {
     readonly nextCursor?: number;
   }
 
+  export interface SessionWaitOptions {
+    /** 默认 60 秒，限制为 1–600 秒；超时不会取消 turn。 */
+    readonly timeoutMs?: number;
+  }
+
+  export type SessionTurnWaitResult =
+    | { readonly state: 'completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly completedAt: string }
+    | { readonly state: 'failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly failedAt: string }
+    | { readonly state: 'timeout'; readonly sessionId: string; readonly turnId: string };
+
   export interface Sessions {
     create(options: SessionCreateOptions): Promise<MinitoolSessionDescriptor>;
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
     list(options?: SessionListOptions): Promise<MinitoolSessionDescriptor[]>;
     send(sessionId: string, message: SessionUserMessage, options?: SessionSendOptions): Promise<SessionSendReceipt>;
+    /** 等待指定 turn 完成或失败，无需 sleep/polling。 */
+    waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
     listEvents(options: SessionEventQuery): Promise<SessionEventPage>;
   }
