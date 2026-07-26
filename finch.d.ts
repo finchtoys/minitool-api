@@ -1851,6 +1851,15 @@ declare module 'finch' {
     readonly title?: LocalizedString;
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
+    /** 容器首页展示的引导提示词，最多显示前四项。 */
+    readonly starterPrompts?: readonly {
+      /** 卡片标题。 */
+      readonly title: LocalizedString;
+      /** 卡片补充说明。 */
+      readonly description?: LocalizedString;
+      /** 点击卡片后直接发送的提示词。 */
+      readonly prompt: LocalizedString;
+    }[];
   }
 
   export interface ExtensionManifest {
