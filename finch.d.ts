@@ -421,7 +421,14 @@ declare module 'finch' {
   export interface MinitoolSessionDescriptor {
     readonly sessionId: string;
     readonly owner: { readonly type: 'minitool'; readonly minitoolId: string };
-    readonly placement: { readonly type: 'minitool'; readonly minitoolId: string; readonly containerId: string };
+    /**
+     * `minitool` 会话位于本工具声明的容器内。`space` 会话被创建到某个具体
+     * Space，出现在该 Space 的普通会话列表中，但仍归本 mini tool 所有（因此
+     * 仍能收到 turn 事件并回复微信等外部平台）。
+     */
+    readonly placement:
+      | { readonly type: 'minitool'; readonly minitoolId: string; readonly containerId: string }
+      | { readonly type: 'space'; readonly spaceId: string };
     readonly activity: MinitoolSessionActivity;
     readonly profileId?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
@@ -449,13 +456,28 @@ declare module 'finch' {
   }
 
   export interface SessionCreateOptions {
-    /** 必须在 manifest contributes.sessionContainers 中声明。 */
-    readonly containerId: string;
+    /**
+     * 会话所在容器，普通小工具会话必填，且须在 manifest
+     * contributes.sessionContainers 中声明。若用户为该容器选择了默认模型，
+     * Finch 会自动用于新会话；否则回退全局默认。若改为把会话创建到具体
+     * Space，则省略此项并设置 `space`。
+     */
+    readonly containerId?: string;
+    /**
+     * 把会话创建到某个具体 Space，而非小工具容器。会话会出现在该 Space 的
+     * 普通会话列表中（交互式，非隐藏于容器），同时仍归本 mini tool 所有。
+     * 与 `containerId` 互斥。
+     */
+    readonly space?: { readonly spaceId: string };
     readonly title?: string;
     /** 引用 manifest contributes.agentProfiles 中静态声明的 Agent 角色。 */
     readonly profileId?: string;
     /** 继承发起调用的 Chat/Space 上下文；仅在 Agent tool 调用作用域内可用。 */
     readonly context?: 'caller';
+    /**
+     * `background` 容器会话在完成或等待时不弹系统通知，只在所属
+     * session container 入口显示提醒红点。
+     */
     readonly activity?: MinitoolSessionActivity;
     /** 后台/Bot Session 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
@@ -620,6 +642,22 @@ declare module 'finch' {
     readonly reason?: 'cancelled' | 'timeout' | 'session-ended';
   }
 
+  /** Mini Tool 在长任务执行期间上报给 timeline 的进度。 */
+  export interface ToolProgressUpdate {
+    /** 稳定的机器可读阶段，例如 queued / generating / downloading。 */
+    readonly stage?: string;
+    /** 当前展示给用户的简短状态。 */
+    readonly message: string;
+    /** 0–100；省略时 Finch 展示不确定进度动画。 */
+    readonly percent?: number;
+  }
+
+  /** 单次工具调用的进度上报入口。 */
+  export interface ToolProgress {
+    /** 更新当前 tool call 的 live 进度；不会写入模型上下文或 ToolResult。 */
+    report(update: ToolProgressUpdate): void;
+  }
+
   /** 工具执行期可用的 UI 交互面（表单）。 */
   export interface ToolUi {
     /**
@@ -645,6 +683,8 @@ declare module 'finch' {
     readonly logger: Logger;
     readonly storage: Storage;
     readonly secrets: Secrets;
+    /** 当前 tool call 的 live 进度上报入口。 */
+    readonly progress: ToolProgress;
     /** 工具执行期的交互 UI 面（表单）。 */
     readonly ui: ToolUi;
   }
@@ -1424,6 +1464,7 @@ declare module 'finch' {
     | 'thinking_delta'
     | 'tool_use'
     | 'tool_input_delta'
+    | 'tool_progress'
     | 'tool_result'
     | 'result'
     | 'error'
@@ -1797,7 +1838,18 @@ declare module 'finch' {
   export interface SessionContainerContribution {
     /** 当前小工具内稳定且唯一的容器 id。 */
     readonly id: string;
+    /**
+     * 容器入口图标。支持 Finch built-in {@link IconRef}，或通过
+     * `contributes.iconPacks` + `ctx.icons.register()` 注册的 `ext:` SVG。
+     * 省略时回退为 `bot`。
+     */
+    readonly icon?: IconRef;
+    /**
+     * 容器入口名称。支持 LocalizedString；也可在 `i18n/<locale>.json` 中用
+     * `sessionContainers.<id>.title` 覆盖，切换 App 语言后立即更新。
+     */
     readonly title?: LocalizedString;
+    /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
   }
 
