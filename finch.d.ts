@@ -638,8 +638,12 @@ declare module 'finch' {
     /** 用户取消、超时、或 session 未提交即结束时为 false。 */
     readonly submitted: boolean;
     readonly values: Record<string, string | number | boolean>;
-    /** 非提交结算的原因；submitted 为 true 时不存在。 */
-    readonly reason?: 'cancelled' | 'timeout' | 'session-ended';
+    /**
+     * 非提交结算的原因；submitted 为 true 时不存在。
+     * `'background'` 表示会话运行在后台、没有桌面端用户可应答，表单从未展示——
+     * 若确需用户输入，应提示用户回到 Finch 桌面客户端，而不是重试表单。
+     */
+    readonly reason?: 'cancelled' | 'timeout' | 'session-ended' | 'background';
   }
 
   /** Mini Tool 在长任务执行期间上报给 timeline 的进度。 */
