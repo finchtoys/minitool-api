@@ -662,6 +662,9 @@ declare module 'finch' {
     report(update: ToolProgressUpdate): void;
   }
 
+  /** 在调用 progress.report() 前显式请求初始不定进度条。 */
+  export type ToolProgressMode = 'indeterminate';
+
   /** 工具执行期可用的 UI 交互面（表单）。 */
   export interface ToolUi {
     /**
@@ -842,6 +845,8 @@ declare module 'finch' {
     readonly owner?: { readonly extensionId: string; readonly extensionName?: string };
     /** Optional ToolCallCard inline-summary metadata. */
     readonly callDisplay?: ToolCallDisplay;
+    /** Show an initial indeterminate progress bar until this tool reports progress. */
+    readonly progressMode?: ToolProgressMode;
     execute(input: TInput, ctx: ToolExecutionContext): Promise<ToolResult>;
   }
 
