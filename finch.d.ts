@@ -1927,7 +1927,10 @@ declare module 'finch' {
      * `assistant` 模式必填；新会话自动绑定该 profile。
      */
     readonly agentProfile?: string;
-    /** 容器首页展示的引导提示词，最多显示前四项。 */
+    /**
+     * 容器首页展示的引导提示词，最多显示前四项。语言包可用
+     * `sessionContainers.<containerId>.starterPrompts[<index>]` 覆盖其文案。
+     */
     readonly starterPrompts?: readonly {
       /** 卡片标题。 */
       readonly title: LocalizedString;
