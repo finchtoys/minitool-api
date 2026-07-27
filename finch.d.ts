@@ -1914,6 +1914,19 @@ declare module 'finch' {
     readonly title?: LocalizedString;
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
+    /**
+     * 容器模式：
+     * - `inbox`（默认）：Bot/多 Agent 聚合，会话由小工具发起，首页显示会话列表，
+     *   不展示新建入口，支持容器级默认模型。
+     * - `assistant`：行业场景助手，用户主动创建对话，首页展示角色介绍与引导提示词，
+     *   隐藏容器模型选择，需要绑定 `agentProfile`。
+     */
+    readonly mode?: 'inbox' | 'assistant';
+    /**
+     * 绑定的 Agent 角色 profile id，引用 `contributes.agentProfiles` 中声明的 id。
+     * `assistant` 模式必填；新会话自动绑定该 profile。
+     */
+    readonly agentProfile?: string;
     /** 容器首页展示的引导提示词，最多显示前四项。 */
     readonly starterPrompts?: readonly {
       /** 卡片标题。 */
