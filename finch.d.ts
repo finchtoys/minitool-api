@@ -257,7 +257,7 @@ declare module 'finch' {
       createCanvasWindow(options: CanvasWindowOptions): CanvasWindow;
       showToast(options: ToastOptions): Promise<ToastResult>;
       showConfirmDialog(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
-      showModalDialog(options: ModalDialogOptions): Promise<ModalDialogResult>;
+      showModalDialog(options: ModalDialogOptions): ModalDialogHandle;
       /** 显示一条 Toast 通知（映射为 showToast，保留了 `type` 参数以兼容不同严重等级）。 */
       notify(message: string, type?: 'info' | 'warning' | 'error'): void;
       /**
@@ -373,6 +373,10 @@ declare module 'finch' {
 
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
+    /** Register an optional, container-owned settings menu. */
+    readonly sessionContainers: {
+      registerSettingsMenu(containerId: string, provider: SessionContainerSettingsMenuProvider): Disposable;
+    };
 
     /** 当前 Space / Workspace 信息（只读）。 */
     readonly workspace: WorkspaceInfo;
@@ -1123,6 +1127,19 @@ declare module 'finch' {
    *   },
    * });
    */
+  /** Context passed to the owning SessionContainer's settings menu. */
+  export interface SessionContainerSettingsMenuContext {
+    readonly cwd: string | undefined;
+    readonly minitoolId: string;
+    readonly containerId: string;
+  }
+
+  /** Each declared SessionContainer may register exactly one settings menu. */
+  export interface SessionContainerSettingsMenuProvider {
+    getMenu(ctx: SessionContainerSettingsMenuContext): Promise<ComposerActionMenuItem[]>;
+    execute(ctx: SessionContainerSettingsMenuContext, itemId: string): Promise<void>;
+  }
+
   export interface ComposerActionProvider {
     /**
      * 返回按钮徽标。
@@ -1278,7 +1295,7 @@ declare module 'finch' {
   export interface ConfirmDialogOptions {
     readonly title: string;
     readonly description?: string;
-    /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, and ! warning lines. */
+    /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, ! warning lines, and standalone `![alt](src)` images. Image src accepts credential-free HTTPS URLs or base64 PNG/JPEG/WebP/GIF data URLs up to 5 MB. Dialog images stay UI-only and are not returned to the model. */
     readonly message?: string;
     readonly confirmLabel?: string;
     readonly cancelLabel?: string;
@@ -1298,13 +1315,21 @@ declare module 'finch' {
   export interface ModalDialogOptions {
     readonly title: string;
     readonly description?: string;
-    /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, and ! warning lines. */
+    /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, ! warning lines, and standalone `![alt](src)` images. Image src accepts credential-free HTTPS URLs or base64 PNG/JPEG/WebP/GIF data URLs up to 5 MB. Dialog images stay UI-only and are not returned to the model. */
     readonly message?: string;
     readonly actions?: readonly ModalDialogActionOptions[];
   }
 
   export interface ModalDialogResult {
     readonly action: string | 'dismissed';
+  }
+
+  /**
+   * Awaitable Modal result. `close(action?)` programmatically dismisses the visible
+   * dialog and resolves this same handle exactly like a user action.
+   */
+  export interface ModalDialogHandle extends Promise<ModalDialogResult> {
+    close(action?: string): Promise<void>;
   }
 
   /**
@@ -1914,6 +1939,8 @@ declare module 'finch' {
     readonly title?: LocalizedString;
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
+    /** 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。 */
+    readonly settingsMenu?: { readonly icon?: IconRef; readonly tooltip?: LocalizedString; };
     /**
      * 容器模式：
      * - `inbox`（默认）：Bot/多 Agent 聚合，会话由小工具发起，首页显示会话列表，
