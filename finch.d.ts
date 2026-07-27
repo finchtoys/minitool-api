@@ -139,8 +139,12 @@ declare module 'finch' {
      */
     readonly subscriptions: { dispose(): unknown }[];
 
-    /** 插件元信息（只读）。 */
+    /** 插件元信息（只读）。
+     *  @deprecated 请改用 `ctx.minitool`。 */
     readonly extension: ExtensionInfo;
+
+    /** 当前 mini tool 自身元信息（只读）。 */
+    readonly minitool: MiniToolInfo;
 
     /**
      * 插件私有持久化存储目录的绝对路径。
@@ -169,7 +173,14 @@ declare module 'finch' {
      */
     readonly tools: {
       register(definition: ToolDefinition): Disposable;
+      /** Register a provider that discovers tools on demand (e.g. MCP servers).
+       *  The provider's `search()` is called when the model or ToolSearch
+       *  requests tools matching a query.
+       *  @deprecated Use {@link registerDiscoveryProvider} instead. */
       registerSearchProvider(provider: ToolSearchProvider): Disposable;
+      /** Register a provider for on-demand tool discovery (MCP-style).
+       *  Replaces the deprecated `registerSearchProvider`. */
+      registerDiscoveryProvider(provider: ToolSearchProvider): Disposable;
     };
 
     /**
@@ -210,15 +221,10 @@ declare module 'finch' {
     };
 
     /**
-     * 命令注册表（Phase 2，预留）。
-     * @example
-     * ctx.subscriptions.push(
-     *   ctx.commands.register('myextension.hello', () => ctx.ui.showMessage('hi')),
-     * );
+     * 命令系统为预留阶段，当前版本未实现。请勿调用。
+     * 后续版本会增加 `ctx.commands.register()` 支持。
      */
-    readonly commands: {
-      register(commandId: string, handler: (...args: unknown[]) => unknown): Disposable;
-    };
+    readonly commands: undefined;
 
     /**
      * UI 扩展能力。
@@ -227,6 +233,10 @@ declare module 'finch' {
      * ctx.ui.showToast({ title: 'Saved', variant: 'success', position: 'TC' });
      */
     readonly ui: {
+      /**
+       * 创建一个内嵌 Webview Panel。
+       * @deprecated 当前版本未实现。请改用 `createCanvasWindow` 或原生 Toast/Dialog。
+       */
       createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
       /**
        * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
@@ -248,6 +258,12 @@ declare module 'finch' {
       showToast(options: ToastOptions): Promise<ToastResult>;
       showConfirmDialog(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
       showModalDialog(options: ModalDialogOptions): Promise<ModalDialogResult>;
+      /** 显示一条 Toast 通知（映射为 showToast，保留了 `type` 参数以兼容不同严重等级）。 */
+      notify(message: string, type?: 'info' | 'warning' | 'error'): void;
+      /**
+       * 显示一条 Toast 通知。
+       * @deprecated 请改用 `notify`，语义更清晰。
+       */
       showMessage(message: string, type?: 'info' | 'warning' | 'error'): void;
     };
 
@@ -291,10 +307,17 @@ declare module 'finch' {
     readonly icons: Icons;
 
     /**
-     * 扩展 manifest contribution 快照。Host 只按 extension point 名称透传原始值，
-     * 具体语义由消费扩展自行定义。
+     * 扩展 contribution 快照。读取已启用扩展的原始 manifest contributions。
+     * Host 只按 extension point 名称透传原始值，具体语义由消费扩展自行定义。
+     * @deprecated 请改用 `ctx.minitools` 下的同名方法。
      */
     readonly extensions: Extensions;
+
+    /**
+     * 读取已启用 mini tool 的 manifest contribution 快照。
+     * Host 只按 extension point 名称透传原始值，具体语义由消费扩展自行定义。
+     */
+    readonly minitools: MiniToolContributions;
 
     /**
      * 运行时事件订阅。插件可只读观察 Finch 的 Agent 运行事件，用于状态展示或轻量遥测。
@@ -431,6 +454,13 @@ declare module 'finch' {
       | { readonly type: 'space'; readonly spaceId: string };
     readonly activity: MinitoolSessionActivity;
     readonly profileId?: string;
+    /**
+     * 当 mini tool 容器会话继承了某个 Space 的运行上下文时（通过 `context: 'caller'`
+     * 或容器自身的 Space 级首页/上下文），此处记录该 Space id。会话仍保持在 mini tool
+     * 容器内，但侧栏中显示在该 Space 下方。对真正放入 Space（space placement）或
+     * 无 Space 上下文的会话为 `undefined`。
+     */
+    readonly contextSpaceId?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
     readonly createdAt: string;
     readonly updatedAt: string;
@@ -1465,9 +1495,17 @@ declare module 'finch' {
 
   /**
    * `ctx.extensions` 的接口：读取已启用扩展的原始 manifest contributions。
-   * @deprecated Use {@link MiniToolContributions} for new mini tools.
+   * @deprecated Use {@link MiniToolContributions} instead.
    */
   export interface Extensions {
+    listContributions<T = unknown>(point: string): ExtensionContribution<T>[];
+  }
+
+  /**
+   * 读取已启用 mini tool 的 manifest contribution 快照。
+   * Host 只按 extension point 名称透传原始值，具体语义由消费扩展自行定义。
+   */
+  export interface MiniToolContributions {
     listContributions<T = unknown>(point: string): ExtensionContribution<T>[];
   }
 
@@ -1726,7 +1764,11 @@ declare module 'finch' {
    */
   export interface OAuth {
     connect(provider: OAuthProviderConfig): Promise<OAuthStatus>;
-    /** 为 MCP SDK 等外部协议客户端复用 Finch 原生授权 UI、浏览器与 callback。 */
+    /** 为 MCP SDK 等外部协议客户端复用 Finch 原生授权 UI、浏览器与 callback。
+     *  只返回授权码（AuthorizationCode），由调用方自行完成后续令牌交换。
+     *  如需一键完成完整 OAuth 流程并使用已授权请求，请用 `connect()`。 */
+    initiateAuthorization(input: OAuthInteractiveAuthorization): Promise<OAuthAuthorizationCode>;
+    /** @deprecated 请改用 `initiateAuthorization`。 */
     authorize(input: OAuthInteractiveAuthorization): Promise<OAuthAuthorizationCode>;
     getStatus(provider: OAuthProviderConfig): Promise<OAuthStatus>;
     disconnect(provider: OAuthProviderConfig): Promise<void>;
@@ -2036,8 +2078,6 @@ declare module 'finch' {
   export type MiniToolFormResult = ExtensionFormResult;
   /** Preferred name for {@link ExtensionContribution}. */
   export type MiniToolContribution<T = unknown> = ExtensionContribution<T>;
-  /** Preferred name for {@link Extensions}. */
-  export type MiniToolContributions = Extensions;
   /** Preferred name for {@link ExtensionI18n}. */
   export type MiniToolI18n = ExtensionI18n;
   /** Preferred name for {@link ExtensionPromptGuide}. */
