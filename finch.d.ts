@@ -614,7 +614,8 @@ declare module 'finch' {
   // ════════════════════════════════════════════════════════════════════════════
 
   /**
-   * 插件自定义表单中的单个字段，渲染在等候区表单卡片里。
+   * 插件自定义表单中的单个字段。`ctx.ui.requestForm()`（等候区表单卡片，绑定 tool
+   * 执行上下文）与 `ModalDialogOptions.fields`（独立弹窗，无需 tool 执行上下文）共用同一套字段定义。
    * @deprecated Use {@link MiniToolFormField} for new mini tools.
    */
   export interface ExtensionFormField {
@@ -1321,10 +1322,37 @@ declare module 'finch' {
     /** Lightweight structured text. Supports blank lines, `code`, {text}\\g/\\r/\\y/\\m/\\a/\\b/\\i style tokens, > muted lines, ! warning lines, and standalone `![alt](src)` images. Image src accepts credential-free HTTPS URLs or base64 PNG/JPEG/WebP/GIF data URLs up to 5 MB. Dialog images stay UI-only and are not returned to the model. */
     readonly message?: string;
     readonly actions?: readonly ModalDialogActionOptions[];
+    /**
+     * 可选输入字段，复用 `ctx.ui.requestForm()` 同一套字段栅格
+     * （text/password/textarea/number/select/boolean/link）。
+     * 与 `requestForm` 不同，这个弹窗**不依赖正在运行的 tool call**——可以在
+     * `ExtensionContext.ui` 的任意时机调用（ComposerAction 处理函数、设置菜单、
+     * activate() 里等），因此适合让小工具在没有 Agent 回合的情况下手动收集文本/token 输入。
+     * 声明 `fields` 后，主按钮（第一个 `variant: 'primary'` 的 action）在必填项未填完时禁用；
+     * 提交后 `ModalDialogResult.values` 携带填写的值。
+     *
+     * @example
+     * const result = await ctx.ui.showModalDialog({
+     *   title: '配置 API Key',
+     *   actions: [
+     *     { id: 'cancel', label: '取消' },
+     *     { id: 'save', label: '保存', variant: 'primary' },
+     *   ],
+     *   fields: [
+     *     { key: 'apiKey', label: 'API Key', type: 'password', secret: true, required: true },
+     *   ],
+     * });
+     * if (result.action === 'save') {
+     *   await ctx.secrets.set('apiKey', String(result.values?.apiKey ?? ''));
+     * }
+     */
+    readonly fields?: readonly MiniToolFormField[];
   }
 
   export interface ModalDialogResult {
     readonly action: string | 'dismissed';
+    /** 仅当 `ModalDialogOptions.fields` 被设置时才存在。 */
+    readonly values?: Readonly<Record<string, string | number | boolean>>;
   }
 
   /**
@@ -1773,6 +1801,8 @@ declare module 'finch' {
     /** Manifest permissions.oauth 中声明的权限 id。 */
     providerId: string;
     providerName: string;
+    /** 可选的可信 Provider 图标 URL，例如 finch-ext-icon://<extensionId>/icon.png。 */
+    providerIcon?: string;
     /** 已包含 state 与 redirect_uri 的完整 HTTPS 授权 URL。 */
     authorizationUrl: string;
     state: string;
@@ -1858,31 +1888,101 @@ declare module 'finch' {
   }
 
   /**
-   * 一个由插件贡献的 MCP server 配置（stdio transport）。
-   * Finch 会用 `command`/`args`/`env` 启动子进程，按 MCP 协议握手并列出工具。
+   * OAuth-protected MCP server 的元数据。声明后，官方 MCP Client 代表本插件完成
+   * discovery + DCR + PKCE、凭证保存与带鉴权的 transport，插件自己不接触 token。
+   *
+   * 这与 `permissions.oauth` + `ctx.oauth.*`（插件自建 OAuth provider）是两条不同路径，
+   * 走这条路径时不需要在 `permissions.oauth` 里额外声明。
+   */
+  export interface McpServerOAuthContribution {
+    /** 稳定的本地凭证 id，供 MCP Client 存取该 server 的凭证。 */
+    readonly id?: string;
+    /** OAuth 授权弹窗中展示的 Provider 名称。 */
+    readonly providerName?: string;
+    /**
+     * OAuth 授权弹窗中的 Provider logo：**本插件包内**的相对 PNG 路径（如 `icon.png`）。
+     * 在这里声明，等于授权 MCP Client 在代持授权流程时展示本插件的 logo；
+     * Finch 会解析为 `finch-ext-icon://<本插件 id>/<path>` 并校验文件确实存在。
+     * 记得把该文件加进 `package.json#files`。
+     */
+    readonly providerIcon?: string;
+  }
+
+  /** 贡献 MCP server 的工具短标题，按原始 MCP 工具名索引。 */
+  export interface McpServerToolMetaContribution {
+    readonly titles?: Readonly<Record<string, string>>;
+  }
+
+  /** 贡献 MCP server 的 ToolCallCard inline 摘要，按原始 MCP 工具名索引。 */
+  export interface McpServerToolDisplayContribution {
+    readonly tools?: Readonly<Record<string, ToolCallDisplay>>;
+  }
+
+  /** 三种 MCP server 声明形式共享的元数据字段。 */
+  export interface McpServerContributionBase {
+    /** server 名称。MCP Bridge 默认用它生成 `mcp__<server>__<tool>` 工具名前缀。 */
+    readonly name: string;
+    /** 用户可见说明，展示在插件详情页。 */
+    readonly description?: string;
+    /** OAuth 元数据，仅对 HTTP transport 的 MCP server 有意义。 */
+    readonly oauth?: McpServerOAuthContribution;
+    /** 该 server 暴露工具的短标题。 */
+    readonly toolMeta?: McpServerToolMetaContribution;
+    /** 该 server 暴露工具的 ToolCallCard inline 摘要。 */
+    readonly toolDisplay?: McpServerToolDisplayContribution;
+  }
+
+  /**
+   * 一个由插件贡献的 MCP server 声明，三选一：
+   * 1. **仅元数据**（不带 transport）——transport 在 `activate()` 里通过
+   *    `mcp.client#registerServer()` 注册，适用于需要 API Key / token 的 server；
+   * 2. **stdio**——用 `command`/`args`/`env` 启动子进程；
+   * 3. **HTTP**——用 `url`（可选 `headers`），OAuth server 走这一种。
+   *
+   * ⚠️ 绝不要把 API Key、token 等 secret 写进静态声明；只有不含 secret 的
+   * transport 才适合直接写在 manifest 里。
    *
    * @example
+   * // stdio
    * {
    *   "name": "filesystem",
    *   "command": "npx",
    *   "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data"],
    *   "description": "Local filesystem access"
    * }
+   *
+   * @example
+   * // OAuth-protected HTTP server，由 MCP Client 代持授权
+   * {
+   *   "name": "notion",
+   *   "url": "https://mcp.notion.com/mcp",
+   *   "oauth": { "id": "notion-mcp", "providerName": "Notion", "providerIcon": "icon.png" }
+   * }
    */
-  export interface McpServerContribution {
-    /** server 名称。MCP Bridge 默认用它生成 `mcp__<server>__<tool>` 工具名前缀。 */
-    readonly name: string;
-    /** 启动命令，如 `npx` 或可执行文件绝对路径。 */
-    readonly command: string;
-    /** 传给命令的参数。 */
-    readonly args?: readonly string[];
-    /** 额外环境变量。 */
-    readonly env?: Readonly<Record<string, string>>;
-    /** 子进程工作目录。 */
-    readonly cwd?: string;
-    /** 用户可见说明，展示在插件详情页。 */
-    readonly description?: string;
-  }
+  export type McpServerContribution =
+    | (McpServerContributionBase & {
+        /** 启动命令，如 `npx` 或可执行文件绝对路径。存在即表示 stdio transport。 */
+        readonly command: string;
+        /** 传给命令的参数。 */
+        readonly args?: readonly string[];
+        /** 额外环境变量。 */
+        readonly env?: Readonly<Record<string, string>>;
+        /** 子进程工作目录。 */
+        readonly cwd?: string;
+        readonly url?: never;
+      })
+    | (McpServerContributionBase & {
+        /** MCP endpoint URL。存在即表示 httpStream transport。 */
+        readonly url: string;
+        /** 静态请求头；不要在这里放 secret。 */
+        readonly headers?: Readonly<Record<string, string>>;
+        readonly env?: Readonly<Record<string, string>>;
+        readonly command?: never;
+      })
+    | (McpServerContributionBase & {
+        readonly command?: never;
+        readonly url?: never;
+      });
 
   /**
    * `package.json → finch` 字段的完整类型定义。
