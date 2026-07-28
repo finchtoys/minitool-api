@@ -375,7 +375,10 @@ declare module 'finch' {
     readonly sessions: Sessions;
     /** Register an optional, container-owned settings menu. */
     readonly sessionContainers: {
-      registerSettingsMenu(containerId: string, provider: SessionContainerSettingsMenuProvider): Disposable;
+      registerSettingsMenu(containerId: string, provider: SessionContainerSettingsMenuProvider): Disposable & {
+        /** Re-fetch the visible menu after login or other background state changes. */
+        notifyUpdate(): void;
+      };
     };
 
     /** 当前 Space / Workspace 信息（只读）。 */
@@ -1053,7 +1056,7 @@ declare module 'finch' {
     /** 标记当前激活项（显示选中状态）。 */
     readonly current?: boolean;
     readonly disabled?: boolean;
-    /** 在此项之前插入分割线。 */
+    /** 将此项渲染为分割线；其他显示字段会被忽略。 */
     readonly separator?: boolean;
     /** 右侧的辅助文字（如快捷键、状态描述）。若同时提供 `trailingButton`，悬停时按钮顶替此文字。 */
     readonly description?: string;
