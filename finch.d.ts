@@ -508,10 +508,10 @@ declare module 'finch' {
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
     /**
-     * @deprecated Agent 角色由目标容器的
+     * @deprecated 已废弃且被忽略。Agent 角色由目标容器的
      * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
-     * 不再由调用方逐个会话指定。若仍然传入，必须与容器声明的 profile id
-     * 完全一致，否则 create() 抛错；与 `space` 同传亦抛错。
+     * 不再由调用方逐个会话指定。传入不会报错（仅打印一条废弃警告，
+     * 会话照常创建），但不产生任何效果——请改为在容器上声明。
      */
     readonly profileId?: string;
     /** 继承发起调用的 Chat/Space 上下文；仅在 Agent tool 调用作用域内可用。 */
@@ -2047,7 +2047,13 @@ declare module 'finch' {
     readonly title?: LocalizedString;
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
-    /** 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。 */
+    /**
+     * 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。
+     * `inbox` 与 `assistant` 两种模式都支持，且共用同一套按钮渲染：
+     * `icon` 遵循标准 IconRef（内置图标 id 或 `ext:<packId>/<iconId>` 自定义 SVG），
+     * 省略时回退为 `sliders-horizontal`——注意这与容器自身 `icon` 的回退值 `bot` 不同。
+     * `tooltip` 省略时回退为小工具名称。
+     */
     readonly settingsMenu?: { readonly icon?: IconRef; readonly tooltip?: LocalizedString; };
     /**
      * 容器模式：
@@ -2059,7 +2065,11 @@ declare module 'finch' {
     readonly mode?: 'inbox' | 'assistant';
     /**
      * 绑定的 Agent 角色 profile id，引用 `contributes.agentProfiles` 中声明的 id。
-     * `assistant` 模式必填。该容器内创建的每个会话都会自动绑定此 profile —— 无论
+     * `assistant` 模式必填，`inbox` 模式可选（例如 Bot 容器给所有来信会话统一人设）。
+     * 该角色会以「用户 Finch 助手的搭档」身份注入：两个身份共存，Finch 本体的名字、
+     * 性格与安全规则保留，角色只负责扩展专长与分工。因此 `prompt` 请写成"专长 + 工作方式"，
+     * 不要写成"你是一个全新的、与 Finch 无关的 AI"。
+     * 该容器内创建的每个会话都会自动绑定此 profile —— 无论
      * 是用户在 Finch 界面点「新对话」，还是小工具自己调用 `ctx.sessions.create()`；
      * profile 内容在会话创建时快照冻结，后续修改 manifest 不影响已存在的会话。
      * 容器之外的普通会话与 Space 会话永远不会带上 agentProfile。
