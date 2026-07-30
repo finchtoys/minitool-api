@@ -507,7 +507,12 @@ declare module 'finch' {
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
-    /** 引用 manifest contributes.agentProfiles 中静态声明的 Agent 角色。 */
+    /**
+     * @deprecated Agent 角色由目标容器的
+     * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
+     * 不再由调用方逐个会话指定。若仍然传入，必须与容器声明的 profile id
+     * 完全一致，否则 create() 抛错；与 `space` 同传亦抛错。
+     */
     readonly profileId?: string;
     /** 继承发起调用的 Chat/Space 上下文；仅在 Agent tool 调用作用域内可用。 */
     readonly context?: 'caller';
@@ -2054,7 +2059,10 @@ declare module 'finch' {
     readonly mode?: 'inbox' | 'assistant';
     /**
      * 绑定的 Agent 角色 profile id，引用 `contributes.agentProfiles` 中声明的 id。
-     * `assistant` 模式必填；新会话自动绑定该 profile。
+     * `assistant` 模式必填。该容器内创建的每个会话都会自动绑定此 profile —— 无论
+     * 是用户在 Finch 界面点「新对话」，还是小工具自己调用 `ctx.sessions.create()`；
+     * profile 内容在会话创建时快照冻结，后续修改 manifest 不影响已存在的会话。
+     * 容器之外的普通会话与 Space 会话永远不会带上 agentProfile。
      */
     readonly agentProfile?: string;
     /**
