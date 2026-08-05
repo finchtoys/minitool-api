@@ -911,7 +911,7 @@ declare module 'finch' {
      * 注意：超时只是保护上限，不是配额。长任务更推荐「先同步等一小段时间，拿不到
      * 结果就返回任务 id 让模型稍后查询」的异步模式，避免长时间阻塞整轮对话。
      */
-    readonly timeout?: number;
+    readonly timeoutMs?: number;
     execute(input: TInput, ctx: ToolExecutionContext): Promise<ToolResult>;
   }
 
