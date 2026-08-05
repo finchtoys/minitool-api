@@ -2008,6 +2008,7 @@ declare module 'finch' {
    * {
    *   "finch": {
    *     "manifestVersion": 1,
+   *     "minVersion": "1.6.0",
    *     "id": "my-extension",
    *     "name": "My Extension",
    *     "description": "Does something useful.",
@@ -2102,6 +2103,11 @@ declare module 'finch' {
   export interface ExtensionManifest {
     /** 必须为 `1`。 */
     readonly manifestVersion: 1;
+    /**
+     * 加载此小工具所需的最低 Finch 应用版本。必须是完整 SemVer（如 `1.6.0`），
+     * 不支持 `>=1.6.0` 等范围表达式。省略时兼容所有支持当前 manifestVersion 的 Finch 版本。
+     */
+    readonly minVersion?: string;
     /** 全局唯一 id（小写字母、数字、连字符）。安装后不可更改。 */
     readonly id: string;
     /**
