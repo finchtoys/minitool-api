@@ -902,6 +902,16 @@ declare module 'finch' {
     readonly callDisplay?: ToolCallDisplay;
     /** Show an initial indeterminate progress bar until this tool reports progress. */
     readonly progressMode?: ToolProgressMode;
+    /**
+     * 该工具单次执行的最长时间（毫秒）。省略时使用 Finch 默认的 120000（2 分钟）。
+     *
+     * 用于长耗时工具（生图、视频渲染、远程任务轮询等）。声明后 Finch 会以该值
+     * 作为超时上限，而不是默认 2 分钟；取值被夹在 15000 ~ 600000（15 秒 ~ 10 分钟）之间。
+     *
+     * 注意：超时只是保护上限，不是配额。长任务更推荐「先同步等一小段时间，拿不到
+     * 结果就返回任务 id 让模型稍后查询」的异步模式，避免长时间阻塞整轮对话。
+     */
+    readonly timeout?: number;
     execute(input: TInput, ctx: ToolExecutionContext): Promise<ToolResult>;
   }
 
