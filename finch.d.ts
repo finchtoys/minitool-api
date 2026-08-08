@@ -644,12 +644,13 @@ declare module 'finch' {
     /** 表单值映射中的唯一 key。 */
     readonly key: string;
     readonly label: string;
-    readonly type: 'text' | 'password' | 'textarea' | 'number' | 'select' | 'boolean' | 'link';
+    readonly type: 'text' | 'password' | 'textarea' | 'number' | 'select' | 'multiselect' | 'boolean' | 'link';
     readonly placeholder?: string;
     readonly description?: string;
     readonly required?: boolean;
-    readonly default?: string | number | boolean;
-    /** `select` 字段的可选项。 */
+    /** `multiselect` 的默认值是初始勾选的选项值数组。 */
+    readonly default?: string | number | boolean | readonly string[];
+    /** `select` / `multiselect` 字段的可选项。 */
     readonly options?: ReadonlyArray<{ readonly value: string; readonly label: string }>;
     /**
      * 标记敏感字段。UI 会渲染密码框，且插件作者**绝不可**把它的值写回模型可见的 ToolResult。
@@ -709,7 +710,8 @@ declare module 'finch' {
   export interface ExtensionFormResult {
     /** 用户取消、超时、或 session 未提交即结束时为 false。 */
     readonly submitted: boolean;
-    readonly values: Record<string, string | number | boolean>;
+    /** `multiselect` 字段回传 `string[]`（未勾选时为空数组）。 */
+    readonly values: Record<string, string | number | boolean | string[]>;
     /**
      * 非提交结算的原因；submitted 为 true 时不存在。
      * `'background'` 表示会话运行在后台、没有桌面端用户可应答，表单从未展示——
@@ -1418,8 +1420,8 @@ declare module 'finch' {
 
   export interface ModalDialogResult {
     readonly action: string | 'dismissed';
-    /** 仅当 `ModalDialogOptions.fields` 被设置时才存在。 */
-    readonly values?: Readonly<Record<string, string | number | boolean>>;
+    /** 仅当 `ModalDialogOptions.fields` 被设置时才存在。`multiselect` 字段为 `string[]`。 */
+    readonly values?: Readonly<Record<string, string | number | boolean | string[]>>;
   }
 
   /**
