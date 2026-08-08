@@ -373,9 +373,26 @@ declare module 'finch' {
 
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
-    /** Register an optional, container-owned settings menu. */
     readonly sessionContainers: {
+      /**
+       * @deprecated 旧版容器级设置菜单，只会出现在该容器的会话页头部。
+       * 新小工具请改用 `ctx.settingsMenu.register()`——它同时出现在容器页头部
+       * 和小工具箱卡片上。已发布的小工具无需改造，仍按原样工作。
+       */
       registerSettingsMenu(containerId: string, provider: SessionContainerSettingsMenuProvider): Disposable & {
+        /** Re-fetch the visible menu after login or other background state changes. */
+        notifyUpdate(): void;
+      };
+    };
+
+    /**
+     * 小工具唯一的统一设置菜单。需要在 manifest 里声明
+     * `contributes.settingsMenu`，注册后会同时出现在：
+     * 1）该小工具会话容器页头部；2）小工具箱卡片（开关左侧）与详情页操作行。
+     * manifest 顶层 `settings` 表单会作为内置项自动追加到菜单末尾。
+     */
+    readonly settingsMenu: {
+      register(provider: SettingsMenuProvider): Disposable & {
         /** Re-fetch the visible menu after login or other background state changes. */
         notifyUpdate(): void;
       };
@@ -1159,6 +1176,41 @@ declare module 'finch' {
     execute(ctx: SessionContainerSettingsMenuContext, itemId: string): Promise<void>;
   }
 
+  /** 统一设置菜单当前渲染的位置。 */
+  export type SettingsMenuSurface = 'container' | 'toolcase';
+
+  /** 小工具统一设置菜单的运行时上下文。 */
+  export interface SettingsMenuContext {
+    readonly cwd: string | undefined;
+    readonly minitoolId: string;
+    /** `container`：会话容器页头部；`toolcase`：小工具箱卡片/详情页。 */
+    readonly surface: SettingsMenuSurface;
+    /** 仅当 `surface === 'container'` 时存在。 */
+    readonly containerId?: string;
+  }
+
+  /**
+   * 每个小工具最多注册一个统一设置菜单。
+   *
+   * @example
+   * ctx.settingsMenu.register({
+   *   async getMenu() {
+   *     const account = await readAccount();
+   *     return [
+   *       { id: 'account', label: account ? `已登录：${account}` : '未登录', disabled: true },
+   *       { id: 'login', label: account ? '重新登录' : '登录', iconName: 'LogIn' },
+   *     ];
+   *   },
+   *   async execute(_ctx, itemId) {
+   *     if (itemId === 'login') await login();
+   *   },
+   * });
+   */
+  export interface SettingsMenuProvider {
+    getMenu(ctx: SettingsMenuContext): Promise<ComposerActionMenuItem[]>;
+    execute(ctx: SettingsMenuContext, itemId: string): Promise<void>;
+  }
+
   export interface ComposerActionProvider {
     /**
      * 返回按钮徽标。
@@ -1751,17 +1803,21 @@ declare module 'finch' {
   // ════════════════════════════════════════════════════════════════════════════
 
   /**
-   * 对 manifest `permissions.secrets` 中声明的密钥的只读访问。
+   * 对 manifest `permissions.secrets` 中声明的密钥进行加密、扩展隔离的访问。
    *
-   * 密钥由 Finch 安全存储（Keychain / Secret Service），插件只能读取，无法写入。
-   * 如需允许用户在 Finch 设置界面填写密钥，在 manifest 的 `permissions.secrets` 里声明 key 名。
+   * Finch 只在系统安全存储可用时读写；不会回退为明文。权限支持精确 key
+   * 或末尾 `.*` 前缀（如 `mcp.*`），不接受裸 `*`。
    *
    * @example
    * // package.json → finch.permissions.secrets: ["OPENAI_API_KEY"]
+   * await ctx.secrets.set('OPENAI_API_KEY', keyFromSecureForm);
    * const key = await ctx.secrets.get('OPENAI_API_KEY');
+   * await ctx.secrets.delete('OPENAI_API_KEY');
    */
   export interface Secrets {
     get(key: string): Promise<string | undefined>;
+    set(key: string, value: string): Promise<void>;
+    delete(key: string): Promise<void>;
   }
 
   /** OAuth 2.0 公共客户端配置，支持 Authorization Code + PKCE 与 Device Flow。 */
@@ -2059,8 +2115,10 @@ declare module 'finch' {
     /** 可用 `sessionContainers.<id>.description` 提供语言覆盖。 */
     readonly description?: LocalizedString;
     /**
-     * 此容器唯一的可选设置菜单入口；运行时通过 ctx.sessionContainers.registerSettingsMenu() 填充。
-     * `inbox` 与 `assistant` 两种模式都支持，且共用同一套按钮渲染：
+     * @deprecated 旧版容器级设置菜单入口，只显示在该容器的会话页头部；运行时通过
+     * `ctx.sessionContainers.registerSettingsMenu()` 填充。新小工具请改用顶层
+     * `contributes.settingsMenu` + `ctx.settingsMenu.register()`，它会同时出现在
+     * 容器页头部和小工具箱里。
      * `icon` 遵循标准 IconRef（内置图标 id 或 `ext:<packId>/<iconId>` 自定义 SVG），
      * 省略时回退为 `sliders-horizontal`——注意这与容器自身 `icon` 的回退值 `bot` 不同。
      * `tooltip` 省略时回退为小工具名称。
@@ -2131,6 +2189,14 @@ declare module 'finch' {
       readonly tools?: boolean;
       /** 贡献的 Composer 工具栏按钮（静态声明）。 */
       readonly composerActions?: ComposerActionDeclaration[];
+      /**
+       * 小工具唯一的统一设置菜单入口（静态声明），运行时通过
+       * `ctx.settingsMenu.register()` 填充内容。声明后按钮会同时出现在该小工具的
+       * 会话容器页头部，以及小工具箱卡片（开关左侧）与详情页操作行。
+       * `icon` 省略时回退为 `sliders-horizontal`，`tooltip` 省略时回退为「设置」。
+       * 文案可在 `i18n/<locale>.json` 里用 `contributes.settingsMenu.tooltip` 覆盖。
+       */
+      readonly settingsMenu?: { readonly icon?: IconRef; readonly tooltip?: LocalizedString; };
       /**
        * 运行时图标包命名空间声明。实际 SVG 在代码里通过 `ctx.icons.register(packId, icons)` 注册。
        * @example
