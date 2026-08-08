@@ -581,7 +581,27 @@ declare module 'finch' {
     | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly createdAt: string }
     | { readonly sequence: number; readonly type: 'turn.failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly createdAt: string }
-    | { readonly sequence: number; readonly type: 'turn.waiting'; readonly sessionId: string; readonly turnId: string; readonly reason: 'permission' | 'question' | 'form'; readonly createdAt: string };
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.waiting';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly reason: SessionWaitKind;
+        /** 用于调用 respondToWait() 应答该等待，等同于卡片 id。 */
+        readonly requestId: string;
+        /** 完整的等待内容快照。 */
+        readonly wait: SessionWait;
+        readonly createdAt: string;
+      }
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.wait_resolved';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly requestId: string;
+        readonly resolvedBy: SessionWaitResolver;
+        readonly createdAt: string;
+      };
 
   export type SessionBridgeEvent =
     | SessionDurableEvent
@@ -609,6 +629,84 @@ declare module 'finch' {
     | { readonly state: 'failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly failedAt: string }
     | { readonly state: 'timeout'; readonly sessionId: string; readonly turnId: string };
 
+  // ── Session 等待（权限 / 提问 / 表单）─────────────────────────
+
+  export type SessionWaitKind = 'permission' | 'question' | 'form';
+
+  /** 谁结算了这次等待。 */
+  export type SessionWaitResolver = 'user' | 'minitool' | 'timeout' | 'system';
+
+  export interface SessionWaitBase {
+    readonly sessionId: string;
+    readonly turnId?: string;
+    /** 传给 respondToWait() 的 id，等同于交互卡片 id（toolUseId）。 */
+    readonly requestId: string;
+    readonly kind: SessionWaitKind;
+    readonly createdAt: string;
+    /** 仅当等待会自行取消时出现（带 timeoutMs 的表单卡）。 */
+    readonly expiresAt?: string;
+  }
+
+  export interface SessionPermissionWait extends SessionWaitBase {
+    readonly kind: 'permission';
+    readonly toolName: string;
+    readonly toolInput: unknown;
+    readonly toolTitle?: string;
+    /** 发起授权请求的工具来源。 */
+    readonly toolSource?: { readonly type: 'builtin' | 'minitool'; readonly id?: string; readonly name?: string };
+    /** 高风险工具或危险命令，不允许沉淀为长期规则。 */
+    readonly dangerous?: boolean;
+    /**
+     * 不可逆操作。小工具可以读取这类等待，但永远无法应答——
+     * respondToWait() 会返回 `forbidden`，只有真人可以批准。
+     */
+    readonly destructive?: boolean;
+  }
+
+  export interface SessionQuestionWait extends SessionWaitBase {
+    readonly kind: 'question';
+    readonly questions: ReadonlyArray<{
+      readonly question: string;
+      readonly header: string;
+      readonly multiSelect: boolean;
+      readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
+    }>;
+  }
+
+  export interface SessionFormWait extends SessionWaitBase {
+    readonly kind: 'form';
+    /** 打开该表单的小工具。 */
+    readonly extensionId?: string;
+    readonly form: {
+      readonly title: string;
+      readonly description?: string;
+      readonly submitLabel?: string;
+      readonly cancelLabel?: string;
+      readonly fields: ExtensionFormField[];
+    };
+  }
+
+  export type SessionWait = SessionPermissionWait | SessionQuestionWait | SessionFormWait;
+
+  export type SessionWaitResponse =
+    | { readonly kind: 'permission'; readonly allow: boolean }
+    /** key 为每个问题的 `header`。 */
+    | { readonly kind: 'question'; readonly answers: Record<string, string> }
+    | { readonly kind: 'form'; readonly submitted: boolean; readonly values?: Record<string, string | number | boolean | string[]> };
+
+  export type SessionWaitRespondResult =
+    | { readonly state: 'accepted'; readonly requestId: string }
+    /** 已被真人、超时或会话结束抢先结算。 */
+    | { readonly state: 'stale'; readonly requestId: string; readonly resolvedBy: SessionWaitResolver }
+    | { readonly state: 'not_found'; readonly requestId: string }
+    /** 被策略拦截——例如 destructive 权限卡。 */
+    | { readonly state: 'forbidden'; readonly requestId: string; readonly reason: string };
+
+  export interface SessionWaitPollOptions {
+    /** 默认 60 秒，限制为 1–600 秒。 */
+    readonly timeoutMs?: number;
+  }
+
   export interface Sessions {
     create(options: SessionCreateOptions): Promise<MinitoolSessionDescriptor>;
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
@@ -618,6 +716,12 @@ declare module 'finch' {
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
     listEvents(options: SessionEventQuery): Promise<SessionEventPage>;
+    /** 当前阻塞该 Session 的未结算等待。需要 permissions.sessions。 */
+    listWaits(sessionId: string): Promise<SessionWait[]>;
+    /** 以程序方式应答等待。需要 permissions.sessionInteractions。 */
+    respondToWait(sessionId: string, requestId: string, response: SessionWaitResponse): Promise<SessionWaitRespondResult>;
+    /** Session 一旦出现待处理等待就返回，无需轮询。 */
+    waitForWait(sessionId: string, options?: SessionWaitPollOptions): Promise<SessionWait | undefined>;
   }
 
   /** 当前激活 Space 或默认 Workspace 的信息。 */
@@ -2308,6 +2412,12 @@ declare module 'finch' {
     readonly oauth?: string[];
     /** 是否允许创建并收发当前小工具自己拥有的 Session。 */
     readonly sessions?: boolean;
+    /**
+     * 是否允许代替用户应答自己 Session 里的等待（权限卡 / 提问卡 / 表单卡）。
+     * 独立于 `sessions`：读取等待只需 `sessions`，应答才需要本权限。
+     * 即便声明了本权限，destructive 权限卡也永远只能由真人批准。
+     */
+    readonly sessionInteractions?: boolean;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
