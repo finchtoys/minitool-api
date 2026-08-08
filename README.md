@@ -139,10 +139,12 @@ await ctx.storage.delete('config');
 
 ### `ctx.secrets` — Secrets
 
-Read-only access to secrets declared in `package.json → permissions.secrets`. Values are entered by the user in Finch Settings, never in code.
+Encrypted, extension-scoped secrets declared in `package.json → permissions.secrets`. Finch refuses the operation when OS secure storage is unavailable and never falls back to plaintext. Declare exact names or a trailing prefix wildcard such as `mcp.*`; bare `*` is rejected.
 
 ```ts
+await ctx.secrets.set('MY_API_KEY', apiKeyFromSecureForm);
 const apiKey = await ctx.secrets.get('MY_API_KEY');
+await ctx.secrets.delete('MY_API_KEY');
 ```
 
 ### `ctx.settings` — User Settings
