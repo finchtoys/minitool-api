@@ -2415,7 +2415,7 @@ declare module 'finch' {
     /**
      * 是否允许代替用户应答自己 Session 里的等待（权限卡 / 提问卡 / 表单卡）。
      * 独立于 `sessions`：读取等待只需 `sessions`，应答才需要本权限。
-     * 即便声明了本权限，destructive 权限卡也永远只能由真人批准。
+     * destructive 权限卡可由程序拒绝以安全继续，但永远只能由真人批准。
      */
     readonly sessionInteractions?: boolean;
   }
