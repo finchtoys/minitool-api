@@ -657,8 +657,8 @@ declare module 'finch' {
     /** 高风险工具或危险命令，不允许沉淀为长期规则。 */
     readonly dangerous?: boolean;
     /**
-     * 不可逆操作。小工具可以读取这类等待，但永远无法应答——
-     * respondToWait() 会返回 `forbidden`，只有真人可以批准。
+     * 不可逆操作。小工具可拒绝这类等待，让任务安全继续，但不能批准；
+     * 批准时 respondToWait() 返回 `forbidden`，只有真人可以批准。
      */
     readonly destructive?: boolean;
   }
@@ -699,7 +699,7 @@ declare module 'finch' {
     /** 已被真人、超时或会话结束抢先结算。 */
     | { readonly state: 'stale'; readonly requestId: string; readonly resolvedBy: SessionWaitResolver }
     | { readonly state: 'not_found'; readonly requestId: string }
-    /** 被策略拦截——例如 destructive 权限卡。 */
+    /** 被策略拦截——例如尝试批准 destructive 权限卡。 */
     | { readonly state: 'forbidden'; readonly requestId: string; readonly reason: string };
 
   export interface SessionWaitPollOptions {
