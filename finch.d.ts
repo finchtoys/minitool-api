@@ -877,7 +877,12 @@ declare module 'finch' {
   /** 工具向模型返回的内容块。 */
   export type ToolContent =
     | { readonly type: 'text'; readonly text: string }
-    | { readonly type: 'image'; readonly data: string; readonly mimeType: string };
+    | {
+        readonly type: 'image';
+        /** 裸 base64 图片数据；不要包含 `data:image/...;base64,` 前缀。 */
+        readonly data: string;
+        readonly mimeType: string;
+      };
 
   /** 工具执行结果。 */
   export interface ToolResult {
@@ -1978,7 +1983,7 @@ declare module 'finch' {
     /** Manifest permissions.oauth 中声明的权限 id。 */
     providerId: string;
     providerName: string;
-    /** 可选的可信 Provider 图标 URL，例如 finch-ext-icon://<extensionId>/icon.png。 */
+    /** 可选的可信 Provider 图标 URL，例如 finch-ext-icon://<scope>/<package>/icon.png。 */
     providerIcon?: string;
     /** 已包含 state 与 redirect_uri 的完整 HTTPS 授权 URL。 */
     authorizationUrl: string;
@@ -2079,7 +2084,7 @@ declare module 'finch' {
     /**
      * OAuth 授权弹窗中的 Provider logo：**本插件包内**的相对 PNG 路径（如 `icon.png`）。
      * 在这里声明，等于授权 MCP Client 在代持授权流程时展示本插件的 logo；
-     * Finch 会解析为 `finch-ext-icon://<本插件 id>/<path>` 并校验文件确实存在。
+     * scoped 包会解析为 `finch-ext-icon://<scope>/<package>/<path>`，并校验文件确实存在。
      * 记得把该文件加进 `package.json#files`。
      */
     readonly providerIcon?: string;
