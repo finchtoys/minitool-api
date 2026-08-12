@@ -114,7 +114,7 @@ declare module 'finch' {
    * - `ctx.tools` — Agent 工具注册
    * - `ctx.composerActions` — Composer 工具栏按钮
    * - `ctx.storage` — 私有 KV 存储
-   * - `ctx.secrets` — 只读密钥
+   * - `ctx.secrets` — 系统加密密钥读写
    * - `ctx.oauth` — 隔离的 OAuth 连接与授权请求
    * - `ctx.logger` — 带前缀日志
    * - `ctx.app` — Finch App 基本信息（只读）
@@ -359,7 +359,7 @@ declare module 'finch' {
     /** 带插件 id 前缀的日志。 */
     readonly logger: Logger;
 
-    /** 对 manifest `permissions.secrets` 声明的密钥的只读访问。 */
+    /** 对 manifest `permissions.secrets` 声明的密钥进行系统加密读写。 */
     readonly secrets: Secrets;
 
     /** OAuth Broker：凭证按小工具隔离，原始 token 不会暴露。 */
@@ -1916,8 +1916,8 @@ declare module 'finch' {
   /**
    * 对 manifest `permissions.secrets` 中声明的密钥进行加密、扩展隔离的访问。
    *
-   * Finch 只在系统安全存储可用时读写；不会回退为明文。权限支持精确 key
-   * 或末尾 `.*` 前缀（如 `mcp.*`），不接受裸 `*`。
+   * 插件可读取、写入和删除已授权的 key。Finch 只在系统安全存储可用时读写；
+   * 不会回退为明文。权限支持精确 key 或末尾 `.*` 前缀（如 `mcp.*`），不接受裸 `*`。
    *
    * @example
    * // package.json → finch.permissions.secrets: ["OPENAI_API_KEY"]
@@ -2412,7 +2412,7 @@ declare module 'finch' {
     readonly network?: boolean;
     /** 是否允许执行 shell 命令。 */
     readonly shell?: boolean;
-    /** 可访问的密钥 key 列表（在 Finch 设置中由用户填写）。 */
+    /** 可访问的密钥 key 或末尾通配符前缀；通过系统安全存储加密。 */
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
     readonly oauth?: string[];
