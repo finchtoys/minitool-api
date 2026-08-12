@@ -1847,7 +1847,7 @@ declare module 'finch' {
   // § 6.6  I18n — 扩展运行时多语言
   // ════════════════════════════════════════════════════════════════════════════
 
-  export type AppLocale = 'zh-CN' | 'en-US';
+  export type AppLocale = 'zh-CN' | 'zh-HK' | 'en-US';
   export type LocalePreference = 'system' | AppLocale;
   export type TranslationValue = string | number | boolean | null | undefined;
   export type TranslationValues = Record<string, TranslationValue>;
@@ -1857,7 +1857,7 @@ declare module 'finch' {
    * @deprecated Use {@link MiniToolI18n} for new mini tools.
    */
   export interface ExtensionI18n {
-    /** 当前解析后的 app 语言，例如 `zh-CN` 或 `en-US`。 */
+    /** 当前解析后的 app 语言，例如 `zh-CN`、`zh-HK` 或 `en-US`。 */
     readonly locale: AppLocale;
     /** 按 key 翻译，支持 `{placeholder}` 参数替换；缺失 key 返回 key 本身。 */
     t(key: string, values?: TranslationValues): string;
@@ -2045,6 +2045,7 @@ declare module 'finch' {
     readonly default?: string;
     readonly 'en-US'?: string;
     readonly 'zh-CN'?: string;
+    readonly 'zh-HK'?: string;
   };
 
   /**
