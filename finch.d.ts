@@ -1579,6 +1579,19 @@ declare module 'finch' {
   /** 公开的 macOS 置顶层级，仅支持常规与浮动窗口。 */
   export type AlwaysOnTopLevel = 'normal' | 'floating';
 
+  /** CanvasWindow 的显式生命周期；`disposed` 是不可逆终态。 */
+  export type CanvasWindowState = 'creating' | 'ready' | 'visible' | 'hidden' | 'disposing' | 'disposed';
+
+  /** 在一次主进程控制中提交的窗口模式更新。 */
+  export interface CanvasWindowUpdate {
+    bounds?: { x?: number; y?: number; width?: number; height?: number };
+    alwaysOnTop?: boolean;
+    alwaysOnTopLevel?: AlwaysOnTopLevel;
+    alwaysOnTopRelativeLevel?: number;
+    clickThrough?: boolean;
+    visible?: boolean;
+  }
+
   /**
    * Canvas 窗口选项。开发者只提供 `entry`（一段 canvas 脚本路径），不写 HTML。
    */
@@ -1634,8 +1647,10 @@ declare module 'finch' {
    *   frame(dt) {},                 // 可选：连续动画，受 frameRate 限制
    *   render(ctx2d) {},             // 可选：按需绘制；与 frame 二选一
    *   resize(width, height) {},
-   *   onPointer(e) {},              // { type:'move'|'down'|'up', x, y, button }
+   *   onPointer(e) {},              // { type:'move'|'down'|'up'|'cancel', pointerId, x, y, screenX, screenY, button, buttons, pointerType }
    *   onMessage(msg) {},            // 来自 Host 段 postMessage
+   *   suspend(reason) {},           // hidden/system/sleep 时暂停
+   *   resume(reason) {},            // visible/system/wake 时恢复；首帧 dt 已重置
    *   dispose() {},
    * });
    * ```
@@ -1659,12 +1674,18 @@ declare module 'finch' {
   export interface CanvasWindow {
     /** 窗口唯一 id。 */
     readonly id: string;
+    /** shell 加载、define 注册及 init 成功后 resolve；创建取消或失败时 reject。 */
+    readonly ready: Promise<void>;
+    readonly state: CanvasWindowState;
+    readonly visible: boolean;
     show(): void;
     hide(): void;
     setAlwaysOnTop(value: boolean, level?: AlwaysOnTopLevel, relativeLevel?: number): void;
     setPosition(x: number, y: number): void;
     setSize(width: number, height: number): void;
     setClickThrough(value: boolean): void;
+    /** 原子更新单个窗口；bounds 在原生层只调用一次 setBounds。 */
+    update(options: CanvasWindowUpdate): Promise<void>;
     /** Main 侧执行持续移动，新 motion 会覆盖旧 motion。 */
     startMotion(motion: CanvasWindowMotion): void;
     stopMotion(): void;
@@ -1676,7 +1697,11 @@ declare module 'finch' {
     readonly onDidMove: Event<{ x: number; y: number }>;
     /** 窗口尺寸变化时触发。 */
     readonly onDidResize: Event<{ width: number; height: number }>;
-    /** 销毁窗口。 */
+    /** 实际可见性变化时触发。 */
+    readonly onDidChangeVisibility: Event<boolean>;
+    /** 生命周期状态变化时触发。 */
+    readonly onDidChangeState: Event<CanvasWindowState>;
+    /** 销毁窗口。重复调用安全。 */
     dispose(): void;
     /** 窗口被关闭 / 销毁时触发。 */
     readonly onDidDispose: Event<void>;
