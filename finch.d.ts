@@ -1610,6 +1610,10 @@ declare module 'finch' {
     hiddenInMissionControl?: boolean;
     /** 在所有桌面 Space（含全屏空间）显示，切换桌面时窗口跟随，默认 false。仅 macOS，其他平台忽略。 */
     visibleOnAllWorkspaces?: boolean;
+    /** 业务绘制帧率上限，默认 30。 */
+    frameRate?: 15 | 30 | 60;
+    /** Canvas backing store 的最大 DPR，默认 2，范围 1～4。 */
+    maxDevicePixelRatio?: number;
     /** macOS 原生窗口置顶层级。其他平台忽略。 */
     alwaysOnTopLevel?: AlwaysOnTopLevel;
     /** 相对置顶层级。仅 macOS 且指定 `alwaysOnTopLevel` 时生效。 */
@@ -1627,7 +1631,8 @@ declare module 'finch' {
    * // pet-canvas.js —— 运行在 Finch canvas 外壳里，不写 HTML
    * finch.canvas.define({
    *   init({ canvas, ctx2d, width, height, dpr, finch, initialData }) {},
-   *   frame(dt) {},                 // 可选：外壳驱动 requestAnimationFrame
+   *   frame(dt) {},                 // 可选：连续动画，受 frameRate 限制
+   *   render(ctx2d) {},             // 可选：按需绘制；与 frame 二选一
    *   resize(width, height) {},
    *   onPointer(e) {},              // { type:'move'|'down'|'up', x, y, button }
    *   onMessage(msg) {},            // 来自 Host 段 postMessage
@@ -1638,8 +1643,19 @@ declare module 'finch' {
    * 外壳注入的 `finch` 桥（Canvas 段可调用）：
    * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v, level?, relativeLevel?)` /
    * `finch.window.setPosition(x,y)` / `finch.window.getDisplays()` / `finch.window.setClickThrough(v)` /
-   * `finch.window.close()`。
+   * `finch.window.close()`；按需绘制可调用 `finch.canvas.invalidate()`。
    */
+  export interface CanvasWindowMotion {
+    kind: 'linear' | 'spring';
+    to: { x: number; y: number };
+    /** 默认 linear=300ms、spring=600ms，范围 16～60000ms。 */
+    durationMs?: number;
+    velocity?: { x: number; y: number };
+    bounds?: 'display-work-area' | 'all-displays';
+    /** Main 侧原生移动频率，默认 30。 */
+    frameRate?: 30 | 60;
+  }
+
   export interface CanvasWindow {
     /** 窗口唯一 id。 */
     readonly id: string;
@@ -1649,6 +1665,9 @@ declare module 'finch' {
     setPosition(x: number, y: number): void;
     setSize(width: number, height: number): void;
     setClickThrough(value: boolean): void;
+    /** Main 侧执行持续移动，新 motion 会覆盖旧 motion。 */
+    startMotion(motion: CanvasWindowMotion): void;
+    stopMotion(): void;
     /** Host 段 → Canvas 段：脚本内 `onMessage(msg)` 接收。 */
     postMessage(message: unknown): Promise<void>;
     /** Canvas 段 → Host 段：脚本内 `finch.postMessage()` 触发。 */
