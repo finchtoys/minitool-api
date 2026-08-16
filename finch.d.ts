@@ -233,10 +233,7 @@ declare module 'finch' {
      * ctx.ui.showToast({ title: 'Saved', variant: 'success', position: 'TC' });
      */
     readonly ui: {
-      /**
-       * 创建一个内嵌 Webview Panel。
-       * @deprecated 当前版本未实现。请改用 `createCanvasWindow` 或原生 Toast/Dialog。
-       */
+      /** 创建绑定当前 Session 的隔离 Webview Panel。包内页面和白名单 localhost 可使用 JS Bridge；公网默认不注入。 */
       createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
       /**
        * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
@@ -1541,40 +1538,64 @@ declare module 'finch' {
     close(action?: string): Promise<void>;
   }
 
-  /**
-   * Webview Panel 选项。
-   */
+  export type WebviewPanelSource =
+    | { readonly type: 'extension'; readonly path: string }
+    | { readonly type: 'html'; readonly html: string; readonly baseUri?: string }
+    | { readonly type: 'url'; readonly url: string };
+
+  export interface WebviewPanelMenuItem {
+    readonly id: string;
+    readonly label: string;
+    readonly icon?: IconRef;
+    readonly disabled?: boolean;
+    readonly separator?: boolean;
+  }
+
   export interface WebviewPanelOptions {
-    /** Panel 标题。 */
-    title: string;
-    /** Panel 图标 Lucide 名（可选）。 */
-    iconName?: string;
-    /**
-     * 初始 HTML 内容（完整 `<html>...</html>`）。
-     * 通过 `window.acquireFinchApi()` 与主进程通信。
-     */
-    html: string;
-    /** Panel 保持可见时是否持续渲染（默认 false，切换后内容保留但不渲染）。 */
-    retainContextWhenHidden?: boolean;
-  }
-
-  /** Webview Panel 句柄，用于双向通信。 */
-  export interface WebviewPanel {
+    /** Stable tool type. `single` panels reuse this key inside the current Session. */
+    readonly viewType: string;
     readonly title: string;
-    /** 当 Panel 收到来自 webview 的消息时触发。 */
-    readonly onDidReceiveMessage: Event<unknown>;
-    /** 向 webview 发送消息（webview 内通过 `window.addEventListener('message')` 接收）。 */
-    postMessage(message: unknown): Promise<void>;
-    /** 更新 HTML 内容。 */
-    setHtml(html: string): void;
-    /** 关闭 Panel。 */
-    dispose(): void;
-    /** Panel 被用户关闭时触发。 */
-    readonly onDidDispose: Event<void>;
+    readonly icon?: IconRef;
+    readonly instanceMode?: 'single' | 'multiple';
+    readonly source: WebviewPanelSource;
+    /** Package pages and explicitly allowlisted localhost origins only. Public origins never receive the Bridge. */
+    readonly bridge?: { readonly enabled?: boolean; readonly allowedOrigins?: readonly string[] };
+    readonly menu?: readonly WebviewPanelMenuItem[];
   }
 
-  // `ctx.ui.createWebviewPanel` 是**预留 API**：当前 Finch 版本未实现，调用会抛出明确的
-  // "尚未实现" 错误。`ctx.ui.showToast` 会显示原生 Toast；`ctx.ui.showMessage` 映射为 Toast。全局 namespace 不再暴露。
+  export interface WebviewPanel {
+    readonly id: string;
+    readonly visible: boolean;
+    reveal(): Promise<void>;
+    postMessage(message: unknown): Promise<void>;
+    setTitle(title: string): Promise<void>;
+    setIcon(icon: IconRef | undefined): Promise<void>;
+    setMenu(items: readonly WebviewPanelMenuItem[]): Promise<void>;
+    onDidReceiveMessage(listener: (message: unknown) => unknown): Disposable;
+    onDidSelectMenuItem(listener: (itemId: string) => unknown): Disposable;
+    onDidChangeVisibility(listener: (visible: boolean) => unknown): Disposable;
+    onDidDispose(listener: () => unknown): Disposable;
+    dispose(): void;
+  }
+
+  export interface FileRangeAnnotation {
+    readonly startLine: number;
+    readonly startColumn?: number;
+    readonly endLine?: number;
+    readonly endColumn?: number;
+  }
+
+  export type ComposerContextDraft =
+    | { readonly type: 'file-range'; readonly path: string; readonly ranges: readonly FileRangeAnnotation[]; readonly note?: string; readonly displayName?: string }
+    | { readonly type: 'image-region'; readonly name: string; readonly mimeType: string; readonly content: string; readonly regions: ReadonlyArray<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly note?: string }>; readonly note?: string; readonly displayName?: string };
+
+  /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
+  export interface WebviewBridgeApi {
+    postMessage(message: unknown): void;
+    onMessage(listener: (message: unknown) => void): () => void;
+    readonly composer: { addContexts(contexts: readonly ComposerContextDraft[]): Promise<{ added: number }> };
+    readonly capture: { capturePage(options?: { mode?: 'viewport' | 'selection'; rect?: { x: number; y: number; width: number; height: number } }): Promise<{ name: string; mimeType: 'image/png'; content: string }> };
+  }
 
   /** 公开的 macOS 置顶层级，仅支持常规与浮动窗口。 */
   export type AlwaysOnTopLevel = 'normal' | 'floating';
