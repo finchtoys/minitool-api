@@ -228,12 +228,25 @@ declare module 'finch' {
 
     /**
      * UI 扩展能力。
-     * `showToast()` 可用于展示轻量、非阻塞通知；Webview Panel 仍为预留 API。
+     * `showToast()` 可用于展示轻量、非阻塞通知；Webview Panel 已实现。
      * @example
      * ctx.ui.showToast({ title: 'Saved', variant: 'success', position: 'TC' });
      */
     readonly ui: {
-      /** 创建绑定当前 Session 的隔离 Webview Panel。包内页面和白名单 localhost 可使用 JS Bridge；公网默认不注入。 */
+      /**
+       * 创建绑定当前 Session 的隔离 Webview Panel。
+       *
+       * 三种内容来源（`options.source`）：
+       * - `extension`：小工具包内页面。由平台静态服务以
+       *   `http://127.0.0.1:<port>/__finch_ext__/<extensionId>/...` 加载
+       *   （真实 http origin，ESM / fetch 可用），默认注入 JS Bridge。
+       * - `html`：内联 HTML 字符串（≤2MB），默认注入 JS Bridge。
+       * - `url`：公网页面或开发者自建服务；仅 localhost 且 `bridge.enabled === true`
+       *   时注入 JS Bridge，公网默认不注入。
+       *
+       * 面板内页面可通过 `window.finch`（WebviewBridgeApi）收发消息、添加 Composer
+       * 上下文或截取页面。`single` 面板在同一 Session 内按 `viewType` 复用。
+       */
       createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
       /**
        * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
@@ -1587,7 +1600,29 @@ declare module 'finch' {
 
   export type ComposerContextDraft =
     | { readonly type: 'file-range'; readonly path: string; readonly ranges: readonly FileRangeAnnotation[]; readonly note?: string; readonly displayName?: string }
-    | { readonly type: 'image-region'; readonly name: string; readonly mimeType: string; readonly content: string; readonly regions: ReadonlyArray<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly note?: string }>; readonly note?: string; readonly displayName?: string };
+    | { readonly type: 'image-region'; readonly name: string; readonly mimeType: string; readonly content: string; readonly regions: ReadonlyArray<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly note?: string }>; readonly note?: string; readonly displayName?: string }
+    | {
+        /**
+         * Adds a "user annotation" chip token to the Composer instead of a bare
+         * attachment — hovering the chip reveals the image/note. The heavy
+         * payload (image bytes, long note text) still ends up in the sent
+         * message's `attachments[]`; the token itself only carries ids.
+         */
+        readonly type: 'annotation';
+        /** Composer chip text. Defaults to a generic "user annotation" label when omitted. */
+        readonly label?: string;
+        /** File this annotation points at (absolute path, must stay inside the active workspace). */
+        readonly path?: string;
+        readonly ranges?: readonly FileRangeAnnotation[];
+        /** User-entered comment attached to this annotation. */
+        readonly note?: string;
+        /** Tool/program-authored prompt shown in the hover card and sent to the model instead of / alongside `note`. */
+        readonly promptText?: string;
+        /** Optional image evidence (base64, no data URL prefix) attached to the annotation. */
+        readonly image?: { readonly name: string; readonly mimeType: string; readonly content: string };
+        /** Optional local image path instead of inline base64. Resolved by Main. */
+        readonly imagePath?: string;
+      };
 
   /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
   export interface WebviewBridgeApi {
@@ -2335,6 +2370,49 @@ declare module 'finch' {
     }[];
   }
 
+  /**
+   * 一个静态的 Webview Panel 启动入口。小工具在 manifest 里声明后，入口会出现在
+   * 右侧 Panel 的「+」菜单与空状态起始页里，用户点击即直接打开该小工具的
+   * Webview Panel —— 全程不经过 Agent 工具调用。
+   *
+   * @example
+   * "panelEntries": [{
+   *   "id": "dashboard",
+   *   "title": "仪表盘",
+   *   "icon": "gauge",
+   *   "viewType": "demo.dashboard",
+   *   "source": { "type": "extension", "path": "dist/dashboard.html" }
+   * }]
+   */
+  export interface WebviewPanelEntryContribution {
+    /** 当前小工具内稳定且唯一的入口 id。 */
+    readonly id: string;
+    /** 入口显示名称。可用 `panelEntries.<id>.title` 提供语言覆盖。 */
+    readonly title: LocalizedString;
+    /** 入口图标。支持 Finch built-in {@link IconRef} 或 `ext:` SVG。 */
+    readonly icon?: IconRef;
+    /**
+     * 面板类型 key。`instanceMode: 'single'` 时，同一会话内相同 `viewType` 的
+     * 面板会被复用而不是重复打开。
+     */
+    readonly viewType: string;
+    /**
+     * 面板内容来源：
+     * - `{ "type": "extension", "path": "dist/page.html" }` —— 小工具包内页面，
+     *   由平台静态服务以 `http://127.0.0.1:<port>/__finch_ext__/<extensionId>/...`
+     *   加载（真实 http origin，ESM / fetch 可用），默认注入 JS Bridge。
+     * - `{ "type": "html", "html": "<!doctype html>…" }` —— 内联 HTML（≤2MB），
+     *   默认注入 JS Bridge。
+     * - `{ "type": "url", "url": "https://…" }` —— 开发者自建服务或公网页面，
+     *   不注入 JS Bridge。
+     */
+    readonly source: WebviewPanelSource;
+    /** `single` 面板在同一会话内按 viewType 复用；默认 `multiple`。 */
+    readonly instanceMode?: 'single' | 'multiple';
+    /** 面板标题栏菜单（静态）。 */
+    readonly menu?: readonly WebviewPanelMenuItem[];
+  }
+
   export interface ExtensionManifest {
     /** 必须为 `1`。 */
     readonly manifestVersion: 1;
@@ -2396,6 +2474,11 @@ declare module 'finch' {
       readonly mcpServers?: McpServerContribution[];
       /** ctx.sessions.create() 可使用的 owner-scoped 容器声明。 */
       readonly sessionContainers?: readonly SessionContainerContribution[];
+      /**
+       * 静态 Webview Panel 启动入口。声明后入口会出现在右侧 Panel 的「+」菜单与
+       * 起始页，点击直接打开该小工具的 Webview Panel（无需 Agent 调用）。
+       */
+      readonly panelEntries?: readonly WebviewPanelEntryContribution[];
     };
     readonly permissions?: ExtensionPermissions;
     /**
