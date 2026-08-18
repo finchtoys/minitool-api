@@ -239,16 +239,25 @@ declare module 'finch' {
      */
     readonly ui: {
       /**
+       * 在当前 Panel scope 的 Finch 原生文件预览中打开一个本地文件。路径必须为
+       * 绝对路径；文件内容不会传入 mini tool，而是继续由 Finch 的预览管线读取与渲染。
+       * 支持 Markdown、代码和其它可预览文本文件。
+       *
+       * @example
+       * await ctx.ui.openFilePreview('/workspace/README.md');
+       */
+      openFilePreview(path: string): Promise<void>;
+      /**
        * 打开 `contributes.panelEntry` 声明的唯一 Panel App。
        * 声明决定页面来源、标题、图标与工具栏；此调用只决定 single/multiple
        * 实例策略。Panel 可绑定 Session、Home 或其他当前 Panel scope。
        */
-      createPanel(options?: WebviewPanelOptions): WebviewPanel;
+      createPanel(options?: AppPanelOptions): AppPanel;
       /**
        * 监听当前 mini tool 声明的 Panel App 实例。Launcher、ComposerAction、
        * Delivery 等所有打开路径都会触发；订阅时也会补发当前仍存活的实例。
        */
-      onDidOpenPanel(listener: (panel: WebviewPanel) => unknown): Disposable;
+      onDidOpenPanel(listener: (panel: AppPanel) => unknown): Disposable;
       /**
        * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
        *
@@ -1589,7 +1598,7 @@ declare module 'finch' {
   }
 
   /** 工具栏 `menu` 项下拉菜单里的一行。 */
-  export interface WebviewPanelMenuItem {
+  export interface AppPanelMenuItem {
     readonly id: string;
     readonly label: string;
     readonly icon?: IconRef;
@@ -1617,14 +1626,14 @@ declare module 'finch' {
    * ]
    * ```
    */
-  export type WebviewPanelToolbarItem =
+  export type AppPanelToolbarItem =
     | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean }
-    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly WebviewPanelMenuItem[] }
+    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly AppPanelMenuItem[] }
     | { readonly type: 'separator' }
     | { readonly type: 'spacer' };
 
   /**
-   * Webview Panel 页面收到的 Finch 主题 CSS 变量（`--finch-*`）——在完整
+   * AppPanel 页面收到的 Finch 主题 CSS 变量（`--finch-*`）——在完整
    * FinchUI 组件库落地之前，先只提供已解析好的主题色/圆角/阴影/字体 token，
    * 让扩展作者可以直接写 `color: var(--finch-text-primary)` 之类的纯 CSS 来
    * 适配当前皮肤（含浅色/深色与用户自定义皮肤），不需要任何 Bridge 消息或
@@ -1635,7 +1644,7 @@ declare module 'finch' {
    * 页面总是注入；`url` 页面仅当满足与 Bridge 相同的 localhost + allowlist
    * 条件时才注入，公网页面永不注入。
    */
-  export type WebviewPanelThemeVar =
+  export type AppPanelThemeVar =
     | "--finch-bg-root" | "--finch-bg-main" | "--finch-bg-elevated" | "--finch-bg-hover" | "--finch-bg-active"
     | "--finch-text-primary" | "--finch-text-secondary" | "--finch-text-tertiary"
     | "--finch-accent" | "--finch-accent-hover" | "--finch-accent-dim"
@@ -1652,30 +1661,43 @@ declare module 'finch' {
    * `msg.type === 'finch:env'` 识别，无需扩展代码手动下发即可拿到运行环境。
    * `finch:` 前缀为平台保留，业务消息请避免使用同名 `type`。
    */
-  export interface WebviewPanelEnvMessage {
+  export interface AppPanelEnvMessage {
     readonly type: 'finch:env';
-    /** 面板归属的工作区目录；非 Session scope（如 Home）可能为空字符串。 */
+    /**
+     * 面板归属的工作区目录；非 Session scope（如 Home）可能为空字符串。
+     * `view === 'appView'` 时固定反映默认工作区目录，与当前激活的 Space
+     * 无关（见 `view` 字段说明）。
+     */
     readonly cwd: string;
-    /** 面板归属的真实 Agent Session id；非 Session scope（如 Home）为空字符串。 */
+    /** 面板归属的真实 Agent Session id；非 Session scope（如 Home/AppView）为空字符串。 */
     readonly sessionId: string;
     /**
      * 面板所在的路由类型：`'session'`（有真实 Agent Session，`sessionId` 非空）、
      * `'home'`（无 Session，但仍有一个 Home Composer 草稿可以写入 —— 例如通过
      * `composer:addContexts` 插入的批注会落到当前 Space 的 Home 输入框）、
      * `'container'`（既无 Session 也无 Composer 草稿，例如小工具的收件箱容器
-     * 视图）。历史/无法识别的 scope 为空字符串，页面应按 `sessionId` 是否非空
-     * 兜底判断，不要假设一定拿到本字段。
+     * 视图）、`'appView'`（`contributes.fullView` 声明的应用级左侧栏全屏页面，
+     * 同样既无 Session 也无 Composer 草稿，且不跟随任何 Space —— `spaceId`/
+     * `spaceName` 固定为空字符串，`cwd` 固定是默认工作区目录）。历史/无法识别
+     * 的 scope 为空字符串，页面应按 `sessionId` 是否非空兜底判断，不要假设一
+     * 定拿到本字段。
      */
-    readonly view: 'home' | 'session' | 'container' | '';
+    readonly view: 'home' | 'session' | 'container' | 'appView' | '';
     /**
      * 面板所在 scope 当前归属的 Space id；未绑定 Space（如自由 Home/自由
-     * Session）时为空字符串。Mini Tool 后端代码通过 `ctx` 拿到的
-     * `WorkspaceInfo.spaceId` 是同一个值，这里把它同步暴露给页面本身，避免
-     * 页面为了拿 Space 信息还要专门 `postMessage` 一次工具调用。
+     * Session，或 `view === 'appView'`）时为空字符串。Mini Tool 后端代码通过
+     * `ctx` 拿到的 `WorkspaceInfo.spaceId` 是同一个值，这里把它同步暴露给页
+     * 面本身，避免页面为了拿 Space 信息还要专门 `postMessage` 一次工具调用。
      */
     readonly spaceId: string;
     /** `spaceId` 对应的展示名称（已本地化/用户自定义），与 `spaceId` 同时为空或同时非空。 */
     readonly spaceName: string;
+    /**
+     * 当前 Finch App 语言（`ctx.app.getInfo().locale` 的同一个值），页面可据此
+     * 本地渲染文案而不必再发一次工具调用去问后端。目前仅 `view === 'appView'`
+     * 时下发；Panel App tab 暂缺，计划后续补齐（见 `docs/minitool-full-view.md`）。
+     */
+    readonly locale?: AppLocale;
     /** 本次打开带入的上下文；页面重建后仍从当前 Session 的 Panel Tab 恢复。 */
     readonly payload?: JsonValue;
   }
@@ -1685,20 +1707,20 @@ declare module 'finch' {
    * postMessage 一条保留消息。页面在 `window.finch.onMessage` 中按
    * `msg.type === 'finch:menu'` 识别并处理。
    */
-  export interface WebviewPanelMenuMessage {
+  export interface AppPanelMenuMessage {
     readonly type: 'finch:menu';
-    /** 被点击项的 id：工具栏按钮/menu 按钮本身的 id，或其下拉菜单里某一行的 `WebviewPanelMenuItem.id`。 */
+    /** 被点击项的 id：工具栏按钮/menu 按钮本身的 id，或其下拉菜单里某一行的 `AppPanelMenuItem.id`。 */
     readonly itemId: string;
   }
 
-  export interface WebviewPanelOptions {
+  export interface AppPanelOptions {
     /** 覆盖 `panelEntry.instanceMode`；不传则使用 manifest 声明。 */
     readonly instanceMode?: 'single' | 'multiple';
     /** 跟随当前 Session Panel Tab 保存的打开上下文。 */
     readonly payload?: JsonValue;
   }
 
-  export interface WebviewPanel {
+  export interface AppPanel {
     readonly id: string;
     /**
      * 打开/持有该 Panel scope 的真实 Agent Session id；非 Session scope
@@ -1776,7 +1798,7 @@ declare module 'finch' {
      * Attaches contexts into the Composer draft this panel's scope owns.
      * Works on `'session'` scope (writes into that Session's draft) and
      * `'home'` scope (writes into the current Space's Home Composer draft —
-     * see `WebviewPanelEnvMessage.view`). Rejects on `'container'` scope or
+     * see `AppPanelEnvMessage.view`). Rejects on `'container'` scope or
      * any legacy/unrecognized scope, since neither has a Composer draft to
      * attach into.
      */
@@ -2551,7 +2573,7 @@ declare module 'finch' {
   }
 
   /** Panel App 内容来源。`local` 由 Finch 静态服务托管；`url` 不注入 Bridge。 */
-  export type WebviewPanelEntrySource =
+  export type AppPanelEntrySource =
     | { readonly type: 'local'; readonly path: string }
     | { readonly type: 'url'; readonly url: string };
 
@@ -2568,7 +2590,22 @@ declare module 'finch' {
    *   "source": { "type": "local", "path": "dist/dashboard.html" }
    * }
    */
-  export interface WebviewPanelEntryContribution {
+  /**
+   * A mini tool's single application-level Webview page. Finch renders it as
+   * a full route and adds its entry above Toolcase in the left sidebar. It is
+   * not a right-side Panel tab: there is no Session scope, toolbar, instance
+   * control, Delivery target, or `AppPanel` lifecycle handle.
+   */
+  export interface WebviewFullViewContribution {
+    /** Stable navigation title. Override via `i18n/<locale>.json` → `fullView.title`. */
+    readonly title: LocalizedString;
+    /** Sidebar icon. Supports Finch built-in {@link IconRef} or `ext:` SVG. */
+    readonly icon?: IconRef;
+    /** Packaged `local` pages receive the trusted Bridge and Finch theme variables; public `url` pages do not. */
+    readonly source: AppPanelEntrySource;
+  }
+
+  export interface AppPanelEntryContribution {
     /** 入口显示名称。可用 `panelEntry.title` 提供语言覆盖。 */
     readonly title: LocalizedString;
     /** 入口图标。支持 Finch built-in {@link IconRef} 或 `ext:` SVG。 */
@@ -2586,13 +2623,13 @@ declare module 'finch' {
      * - `{ "type": "url", "url": "https://…" }` —— 开发者自建服务或公网页面，
      *   不注入 JS Bridge。
      */
-    readonly source: WebviewPanelEntrySource;
+    readonly source: AppPanelEntrySource;
     /** `single` 面板在同一 Panel scope 内复用；默认 `multiple`。 */
     readonly instanceMode?: 'single' | 'multiple';
     /** 是否在右侧 Panel 的「+」菜单和起始页显示默认入口；默认 `true`。 */
     readonly showInLauncher?: boolean;
-    /** 独立渲染在标签栏下方的工具栏行（静态），见 {@link WebviewPanelToolbarItem}。 */
-    readonly toolbar?: readonly WebviewPanelToolbarItem[];
+    /** 独立渲染在标签栏下方的工具栏行（静态），见 {@link AppPanelToolbarItem}。 */
+    readonly toolbar?: readonly AppPanelToolbarItem[];
   }
 
   export interface ExtensionManifest {
@@ -2661,7 +2698,9 @@ declare module 'finch' {
        * 出现在右侧 Panel 的「+」菜单与起始页，点击直接打开该小工具的 Webview
        * Panel（无需 Agent 调用）。`showInLauncher: false` 可隐藏这两个入口。
        */
-      readonly panelEntry?: WebviewPanelEntryContribution;
+      readonly panelEntry?: AppPanelEntryContribution;
+      /** One application-level Webview page shown above Toolcase in the left sidebar. */
+      readonly fullView?: WebviewFullViewContribution;
     };
     readonly permissions?: ExtensionPermissions;
     /**
