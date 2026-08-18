@@ -1751,6 +1751,17 @@ declare module 'finch' {
         readonly note?: string;
         /** Tool/program-authored prompt shown in the hover card and sent to the model instead of / alongside `note`. */
         readonly promptText?: string;
+        /**
+         * Tool/program-authored hint sent to the model but *not* rendered in
+         * the hover card body (unlike `note`/`promptText`) — use it for
+         * machine-oriented instructions (e.g. "call tool X with id=Y to
+         * resolve the exact location") that would otherwise clutter what the
+         * user sees. It still ends up in the raw message text a technically
+         * curious user could inspect (conversation export, dev tools) — this
+         * is intentional, not a covert/hidden channel. Do not abuse this for
+         * anything the user would object to if they saw it.
+         */
+        readonly reminder?: string;
         /** Optional image evidence (base64, no data URL prefix) attached to the annotation. */
         readonly image?: { readonly name: string; readonly mimeType: string; readonly content: string };
         /** Optional local image path instead of inline base64. Resolved by Main. */
