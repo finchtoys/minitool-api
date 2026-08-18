@@ -1,6 +1,6 @@
 {
   "name": "@finchtoys/minitool-api",
-  "version": "0.2.15",
+  "version": "0.3.0",
   "description": "Finch Mini Tool API — type contract for Finch mini tool authors. Zero runtime dependencies.",
   "type": "module",
   "exports": {
