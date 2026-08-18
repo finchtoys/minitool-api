@@ -256,6 +256,11 @@ declare module 'finch' {
       /**
        * 监听当前 mini tool 声明的 Panel App 实例。Launcher、ComposerAction、
        * Delivery 等所有打开路径都会触发；订阅时也会补发当前仍存活的实例。
+       *
+       * 用户直接打开的 `contributes.fullView` 应用级页面同样会触发这个
+       * 监听器（它自己并不调用 `createPanel()`），这是后端唯一能拿到其
+       * `AppPanel` 句柄（进而 `postMessage()`/`onDidReceiveMessage()`）的
+       * 方式；用 `panel.view === 'appView'` 判断是否是 fullView 页面。
        */
       onDidOpenPanel(listener: (panel: AppPanel) => unknown): Disposable;
       /**
@@ -1760,8 +1765,13 @@ declare module 'finch' {
      * 这个面板，不必等待页面侧的 `finch:env` 消息。
      */
     readonly sessionId?: string;
-    /** 与页面侧 `finch:env.view` 一致的分类：`'session' | 'home' | 'container'`。 */
-    readonly view?: 'home' | 'session' | 'container';
+    /**
+     * 与页面侧 `finch:env.view` 一致的分类：`'session' | 'home' | 'container'`，
+     * 另有 `'appView'` —— 表示这个句柄来自用户直接打开的 `contributes.fullView`
+     * 应用级页面（而非通过 `createPanel()` 创建），没有自己的 Session/Home/
+     * Container scope。
+     */
+    readonly view?: 'home' | 'session' | 'container' | 'appView';
     /** 该 scope 当前绑定的 Space（如有），与页面侧 `finch:env.spaceId` 一致。 */
     readonly spaceId?: string;
     /** `spaceId` 对应的展示名称，与 `spaceId` 同时为 undefined 或同时有值。 */
