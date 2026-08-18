@@ -226,6 +226,11 @@ declare module 'finch' {
      */
     readonly commands: undefined;
 
+    /** Finch 内置 Browser Panel。每次调用在当前 Panel scope 新建一个 Browser Tab。 */
+    readonly browser: {
+      open(url: string): Promise<void>;
+    };
+
     /**
      * UI 扩展能力。
      * `showToast()` 可用于展示轻量、非阻塞通知；Webview Panel 已实现。
@@ -234,24 +239,20 @@ declare module 'finch' {
      */
     readonly ui: {
       /**
-       * 创建绑定当前 Session 的隔离 Webview Panel。
-       *
-       * 三种内容来源（`options.source`）：
-       * - `extension`：小工具包内页面。由平台静态服务以
-       *   `http://127.0.0.1:<port>/__finch_ext__/<extensionId>/...` 加载
-       *   （真实 http origin，ESM / fetch 可用），默认注入 JS Bridge。
-       * - `html`：内联 HTML 字符串（≤2MB），默认注入 JS Bridge。
-       * - `url`：公网页面或开发者自建服务；仅 localhost 且 `bridge.enabled === true`
-       *   时注入 JS Bridge，公网默认不注入。
-       *
-       * 面板内页面可通过 `window.finch`（WebviewBridgeApi）收发消息、添加 Composer
-       * 上下文或截取页面。`single` 面板在同一 Session 内按 `viewType` 复用。
+       * 打开 `contributes.panelEntry` 声明的唯一 Panel App。
+       * 声明决定页面来源、标题、图标与工具栏；此调用只决定 single/multiple
+       * 实例策略。Panel 可绑定 Session、Home 或其他当前 Panel scope。
        */
-      createWebviewPanel(options: WebviewPanelOptions): WebviewPanel;
+      createPanel(options?: WebviewPanelOptions): WebviewPanel;
+      /**
+       * 监听当前 mini tool 声明的 Panel App 实例。Launcher、ComposerAction、
+       * Delivery 等所有打开路径都会触发；订阅时也会补发当前仍存活的实例。
+       */
+      onDidOpenPanel(listener: (panel: WebviewPanel) => unknown): Disposable;
       /**
        * 创建一个透明、无边框、可拖到任意位置、可置顶的**浮动 Canvas 窗口**。
        *
-       * 与 `createWebviewPanel`（内嵌 Panel）正交：Canvas 窗口是独立顶层窗，适合桌宠、
+       * 与 `createPanel`（内嵌 Panel）正交：Canvas 窗口是独立顶层窗，适合桌宠、
        * 悬浮工具、桌面小游戏等。开发者**不写 HTML**，只提供一段 canvas 脚本（`entry`），
        * 脚本内调用 `finch.canvas.define({ init, frame, ... })` 注册生命周期。Finch 提供
        * 统一外壳，负责透明窗壳、devicePixelRatio 缩放、rAF 循环、事件分发与双向通信。
@@ -275,6 +276,25 @@ declare module 'finch' {
        * @deprecated 请改用 `notify`，语义更清晰。
        */
       showMessage(message: string, type?: 'info' | 'warning' | 'error'): void;
+      /**
+       * 当前 Session 右侧 Work Sidebar「交付」区的这一行——一条跟随 Session 走
+       * 的扁平记录，与对话时间线完全无关：没有历史、没有解释，只是一行「标题
+       * + 说明」。平台约束每个小工具在一个 Session 里**只能有一行**：重复
+       * `set()` 总是原地覆盖同一行，没有 entryId 概念，不能叠加出多行。点击
+       * 该行会打开这个小工具通过 `contributes.panelEntry` 声明的 Panel App。
+       *
+       * @example
+       * await ctx.ui.delivery.set({
+       *   title: '帕亚的改动',
+       *   detail: '{+969}\\g {-354}\\r',
+       * });
+       * // ...
+       * await ctx.ui.delivery.remove();
+       */
+      readonly delivery: {
+        set(options: DeliverySetOptions): Promise<void>;
+        remove(): Promise<void>;
+      };
     };
 
     /**
@@ -1482,6 +1502,23 @@ declare module 'finch' {
     readonly action: 'action' | 'dismissed';
   }
 
+  /** 可安全跨进程传递与持久化的 JSON 值。 */
+  export type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
+
+  export interface DeliverySetOptions {
+    readonly title: string;
+    /**
+     * 行右侧的说明文字（如 `+969 -354`）。支持和 `ConfirmDialogOptions.message`
+     * 相同的行内 token 子集：`` `code` `` 与 `{text}\g/\r/\y/\m/\a/\b/\i`
+     * 颜色/粗细/样式标记（g=绿 r=红 y=黄 m=灰 a=强调色 b=粗体 i=斜体）。
+     * 仅支持单行——不支持 `>`/`!` 前缀，也不支持图片。
+     */
+    readonly detail?: string;
+    readonly icon?: string;
+    /** 点击此 Delivery 行打开 Panel App 时带入的上下文。 */
+    readonly payload?: JsonValue;
+  }
+
   export type DialogButtonVariant = 'primary' | 'secondary' | 'danger';
 
   export interface ConfirmDialogOptions {
@@ -1551,11 +1588,7 @@ declare module 'finch' {
     close(action?: string): Promise<void>;
   }
 
-  export type WebviewPanelSource =
-    | { readonly type: 'extension'; readonly path: string }
-    | { readonly type: 'html'; readonly html: string; readonly baseUri?: string }
-    | { readonly type: 'url'; readonly url: string };
-
+  /** 工具栏 `menu` 项下拉菜单里的一行。 */
   export interface WebviewPanelMenuItem {
     readonly id: string;
     readonly label: string;
@@ -1564,28 +1597,128 @@ declare module 'finch' {
     readonly separator?: boolean;
   }
 
+  /**
+   * 面板自身工具栏的一项——固定渲染在标签栏下方一整行（只要该面板处于激活
+   * 状态），不藏进下拉菜单里，效果类似内置浏览器面板自带的地址/操作栏。
+   * 可自由混排普通按钮、会展开下拉菜单的 `menu` 按钮、纯分隔线，以及把后续
+   * 项推到行尾的弹性空白：
+   *
+   * ```ts
+   * toolbar: [
+   *   { id: 'reload', icon: 'rotate-cw', tooltip: '重新加载' },
+   *   { type: 'separator' },
+   *   { id: 'share', label: '分享', icon: 'share-2' },
+   *   { type: 'spacer' },
+   *   { type: 'menu', id: 'more', icon: 'ellipsis', items: [
+   *     { id: 'clear-log', label: '清空日志' },
+   *     { id: 'sep', label: '', separator: true },
+   *     { id: 'about', label: '关于', icon: 'sparkles' },
+   *   ] },
+   * ]
+   * ```
+   */
+  export type WebviewPanelToolbarItem =
+    | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean }
+    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly WebviewPanelMenuItem[] }
+    | { readonly type: 'separator' }
+    | { readonly type: 'spacer' };
+
+  /**
+   * Webview Panel 页面收到的 Finch 主题 CSS 变量（`--finch-*`）——在完整
+   * FinchUI 组件库落地之前，先只提供已解析好的主题色/圆角/阴影/字体 token，
+   * 让扩展作者可以直接写 `color: var(--finch-text-primary)` 之类的纯 CSS 来
+   * 适配当前皮肤（含浅色/深色与用户自定义皮肤），不需要任何 Bridge 消息或
+   * JS 代码。平台在页面 `dom-ready` 时以及宿主主题变化时自动重新注入，无需
+   * 扩展代码处理。也可用 `getComputedStyle(document.documentElement)
+   * .getPropertyValue('--finch-theme-mode')`（值为 `'light'` 或 `'dark'`）
+   * 做纯 CSS 变量之外的 JS 分支判断。生效范围：打包 `extension`/内联 `html`
+   * 页面总是注入；`url` 页面仅当满足与 Bridge 相同的 localhost + allowlist
+   * 条件时才注入，公网页面永不注入。
+   */
+  export type WebviewPanelThemeVar =
+    | "--finch-bg-root" | "--finch-bg-main" | "--finch-bg-elevated" | "--finch-bg-hover" | "--finch-bg-active"
+    | "--finch-text-primary" | "--finch-text-secondary" | "--finch-text-tertiary"
+    | "--finch-accent" | "--finch-accent-hover" | "--finch-accent-dim"
+    | "--finch-border" | "--finch-border-subtle" | "--finch-border-strong"
+    | "--finch-positive" | "--finch-warning" | "--finch-danger" | "--finch-info"
+    | "--finch-radius-sm" | "--finch-radius-md" | "--finch-radius-lg" | "--finch-radius-full"
+    | "--finch-shadow-sm" | "--finch-shadow-md"
+    | "--finch-font-body" | "--finch-font-mono"
+    | "--finch-theme-mode";
+
+  /**
+   * `createPanel` 成功创建面板后，平台会自动向已注入 Bridge 的页面
+   * postMessage 一条保留消息，页面可在 `window.finch.onMessage` 里按
+   * `msg.type === 'finch:env'` 识别，无需扩展代码手动下发即可拿到运行环境。
+   * `finch:` 前缀为平台保留，业务消息请避免使用同名 `type`。
+   */
+  export interface WebviewPanelEnvMessage {
+    readonly type: 'finch:env';
+    /** 面板归属的工作区目录；非 Session scope（如 Home）可能为空字符串。 */
+    readonly cwd: string;
+    /** 面板归属的真实 Agent Session id；非 Session scope（如 Home）为空字符串。 */
+    readonly sessionId: string;
+    /**
+     * 面板所在的路由类型：`'session'`（有真实 Agent Session，`sessionId` 非空）、
+     * `'home'`（无 Session，但仍有一个 Home Composer 草稿可以写入 —— 例如通过
+     * `composer:addContexts` 插入的批注会落到当前 Space 的 Home 输入框）、
+     * `'container'`（既无 Session 也无 Composer 草稿，例如小工具的收件箱容器
+     * 视图）。历史/无法识别的 scope 为空字符串，页面应按 `sessionId` 是否非空
+     * 兜底判断，不要假设一定拿到本字段。
+     */
+    readonly view: 'home' | 'session' | 'container' | '';
+    /**
+     * 面板所在 scope 当前归属的 Space id；未绑定 Space（如自由 Home/自由
+     * Session）时为空字符串。Mini Tool 后端代码通过 `ctx` 拿到的
+     * `WorkspaceInfo.spaceId` 是同一个值，这里把它同步暴露给页面本身，避免
+     * 页面为了拿 Space 信息还要专门 `postMessage` 一次工具调用。
+     */
+    readonly spaceId: string;
+    /** `spaceId` 对应的展示名称（已本地化/用户自定义），与 `spaceId` 同时为空或同时非空。 */
+    readonly spaceName: string;
+    /** 本次打开带入的上下文；页面重建后仍从当前 Session 的 Panel Tab 恢复。 */
+    readonly payload?: JsonValue;
+  }
+
+  /**
+   * 用户点击 manifest toolbar 按钮或下拉菜单项时，平台会向页面自身
+   * postMessage 一条保留消息。页面在 `window.finch.onMessage` 中按
+   * `msg.type === 'finch:menu'` 识别并处理。
+   */
+  export interface WebviewPanelMenuMessage {
+    readonly type: 'finch:menu';
+    /** 被点击项的 id：工具栏按钮/menu 按钮本身的 id，或其下拉菜单里某一行的 `WebviewPanelMenuItem.id`。 */
+    readonly itemId: string;
+  }
+
   export interface WebviewPanelOptions {
-    /** Stable tool type. `single` panels reuse this key inside the current Session. */
-    readonly viewType: string;
-    readonly title: string;
-    readonly icon?: IconRef;
+    /** 覆盖 `panelEntry.instanceMode`；不传则使用 manifest 声明。 */
     readonly instanceMode?: 'single' | 'multiple';
-    readonly source: WebviewPanelSource;
-    /** Package pages and explicitly allowlisted localhost origins only. Public origins never receive the Bridge. */
-    readonly bridge?: { readonly enabled?: boolean; readonly allowedOrigins?: readonly string[] };
-    readonly menu?: readonly WebviewPanelMenuItem[];
+    /** 跟随当前 Session Panel Tab 保存的打开上下文。 */
+    readonly payload?: JsonValue;
   }
 
   export interface WebviewPanel {
     readonly id: string;
+    /**
+     * 打开/持有该 Panel scope 的真实 Agent Session id；非 Session scope
+     * （Home、session container）为 undefined。后端代码（例如
+     * `ctx.ui.onDidOpenPanel` 监听器）可以直接用它判断是哪个 Session 打开了
+     * 这个面板，不必等待页面侧的 `finch:env` 消息。
+     */
+    readonly sessionId?: string;
+    /** 与页面侧 `finch:env.view` 一致的分类：`'session' | 'home' | 'container'`。 */
+    readonly view?: 'home' | 'session' | 'container';
+    /** 该 scope 当前绑定的 Space（如有），与页面侧 `finch:env.spaceId` 一致。 */
+    readonly spaceId?: string;
+    /** `spaceId` 对应的展示名称，与 `spaceId` 同时为 undefined 或同时有值。 */
+    readonly spaceName?: string;
+    /** 当前 Panel 实例的打开上下文；single 实例再次打开时会更新。 */
+    readonly payload?: JsonValue;
     readonly visible: boolean;
     reveal(): Promise<void>;
     postMessage(message: unknown): Promise<void>;
-    setTitle(title: string): Promise<void>;
-    setIcon(icon: IconRef | undefined): Promise<void>;
-    setMenu(items: readonly WebviewPanelMenuItem[]): Promise<void>;
     onDidReceiveMessage(listener: (message: unknown) => unknown): Disposable;
-    onDidSelectMenuItem(listener: (itemId: string) => unknown): Disposable;
     onDidChangeVisibility(listener: (visible: boolean) => unknown): Disposable;
     onDidDispose(listener: () => unknown): Disposable;
     dispose(): void;
@@ -1628,8 +1761,44 @@ declare module 'finch' {
   export interface WebviewBridgeApi {
     postMessage(message: unknown): void;
     onMessage(listener: (message: unknown) => void): () => void;
+    /**
+     * Attaches contexts into the Composer draft this panel's scope owns.
+     * Works on `'session'` scope (writes into that Session's draft) and
+     * `'home'` scope (writes into the current Space's Home Composer draft —
+     * see `WebviewPanelEnvMessage.view`). Rejects on `'container'` scope or
+     * any legacy/unrecognized scope, since neither has a Composer draft to
+     * attach into.
+     */
     readonly composer: { addContexts(contexts: readonly ComposerContextDraft[]): Promise<{ added: number }> };
     readonly capture: { capturePage(options?: { mode?: 'viewport' | 'selection'; rect?: { x: number; y: number; width: number; height: number } }): Promise<{ name: string; mimeType: 'image/png'; content: string }> };
+    /** Controls the current Panel tab from inside its page. */
+    readonly panel: {
+      setTitle(title: string): Promise<void>;
+      setIcon(icon?: IconRef): Promise<void>;
+    };
+    /**
+     * Native Finch toast / confirm dialog, callable directly from the page —
+     * the same trusted UI `ctx.ui.showToast()` / `ctx.ui.showConfirmDialog()`
+     * render on the extension backend side. Never falls back to a browser-native
+     * `confirm()`/`alert()`; both calls require a real page
+     * user gesture, same as `composer.addContexts()` / `capture.capturePage()`.
+     *
+     * @example
+     * document.getElementById('delete-btn').addEventListener('click', async () => {
+     *   const { confirmed } = await window.finch.ui.confirm({
+     *     title: 'Delete this item?',
+     *     message: 'This cannot be undone.',
+     *     variant: 'danger',
+     *   });
+     *   if (!confirmed) return;
+     *   await doDelete();
+     *   await window.finch.ui.toast({ title: 'Deleted', variant: 'success' });
+     * });
+     */
+    readonly ui: {
+      toast(options: ToastOptions): Promise<ToastResult>;
+      confirm(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
+    };
   }
 
   /** 公开的 macOS 置顶层级，仅支持常规与浮动窗口。 */
@@ -2370,24 +2539,26 @@ declare module 'finch' {
     }[];
   }
 
+  /** Panel App 内容来源。`local` 由 Finch 静态服务托管；`url` 不注入 Bridge。 */
+  export type WebviewPanelEntrySource =
+    | { readonly type: 'local'; readonly path: string }
+    | { readonly type: 'url'; readonly url: string };
+
   /**
-   * 一个静态的 Webview Panel 启动入口。小工具在 manifest 里声明后，入口会出现在
-   * 右侧 Panel 的「+」菜单与空状态起始页里，用户点击即直接打开该小工具的
-   * Webview Panel —— 全程不经过 Agent 工具调用。
+   * 小工具唯一的 Panel App 声明。一个小工具最多声明一个；它同时作为右侧 Panel
+   * 的用户入口、`ctx.ui.createPanel()` 的运行时定义和 Delivery 行的点击目标。
+   * `showInLauncher: false` 时隐藏右侧「+」菜单与起始页入口，但不影响其他打开路径。
    *
    * @example
-   * "panelEntries": [{
-   *   "id": "dashboard",
+   * "panelEntry": {
    *   "title": "仪表盘",
    *   "icon": "gauge",
    *   "viewType": "demo.dashboard",
-   *   "source": { "type": "extension", "path": "dist/dashboard.html" }
-   * }]
+   *   "source": { "type": "local", "path": "dist/dashboard.html" }
+   * }
    */
   export interface WebviewPanelEntryContribution {
-    /** 当前小工具内稳定且唯一的入口 id。 */
-    readonly id: string;
-    /** 入口显示名称。可用 `panelEntries.<id>.title` 提供语言覆盖。 */
+    /** 入口显示名称。可用 `panelEntry.title` 提供语言覆盖。 */
     readonly title: LocalizedString;
     /** 入口图标。支持 Finch built-in {@link IconRef} 或 `ext:` SVG。 */
     readonly icon?: IconRef;
@@ -2398,19 +2569,19 @@ declare module 'finch' {
     readonly viewType: string;
     /**
      * 面板内容来源：
-     * - `{ "type": "extension", "path": "dist/page.html" }` —— 小工具包内页面，
+     * - `{ "type": "local", "path": "dist/page.html" }` —— 小工具包内页面，
      *   由平台静态服务以 `http://127.0.0.1:<port>/__finch_ext__/<extensionId>/...`
      *   加载（真实 http origin，ESM / fetch 可用），默认注入 JS Bridge。
-     * - `{ "type": "html", "html": "<!doctype html>…" }` —— 内联 HTML（≤2MB），
-     *   默认注入 JS Bridge。
      * - `{ "type": "url", "url": "https://…" }` —— 开发者自建服务或公网页面，
      *   不注入 JS Bridge。
      */
-    readonly source: WebviewPanelSource;
-    /** `single` 面板在同一会话内按 viewType 复用；默认 `multiple`。 */
+    readonly source: WebviewPanelEntrySource;
+    /** `single` 面板在同一 Panel scope 内复用；默认 `multiple`。 */
     readonly instanceMode?: 'single' | 'multiple';
-    /** 面板标题栏菜单（静态）。 */
-    readonly menu?: readonly WebviewPanelMenuItem[];
+    /** 是否在右侧 Panel 的「+」菜单和起始页显示默认入口；默认 `true`。 */
+    readonly showInLauncher?: boolean;
+    /** 独立渲染在标签栏下方的工具栏行（静态），见 {@link WebviewPanelToolbarItem}。 */
+    readonly toolbar?: readonly WebviewPanelToolbarItem[];
   }
 
   export interface ExtensionManifest {
@@ -2475,10 +2646,11 @@ declare module 'finch' {
       /** ctx.sessions.create() 可使用的 owner-scoped 容器声明。 */
       readonly sessionContainers?: readonly SessionContainerContribution[];
       /**
-       * 静态 Webview Panel 启动入口。声明后入口会出现在右侧 Panel 的「+」菜单与
-       * 起始页，点击直接打开该小工具的 Webview Panel（无需 Agent 调用）。
+       * 小工具唯一的静态 Webview Panel 启动入口（一个小工具最多一个）。默认
+       * 出现在右侧 Panel 的「+」菜单与起始页，点击直接打开该小工具的 Webview
+       * Panel（无需 Agent 调用）。`showInLauncher: false` 可隐藏这两个入口。
        */
-      readonly panelEntries?: readonly WebviewPanelEntryContribution[];
+      readonly panelEntry?: WebviewPanelEntryContribution;
     };
     readonly permissions?: ExtensionPermissions;
     /**
