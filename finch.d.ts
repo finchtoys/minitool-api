@@ -412,6 +412,12 @@ declare module 'finch' {
 
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
+    /**
+     * 只读 Space 目录。需要 permissions.sessions（与 `ctx.sessions` 共用同一
+     * 权限门），主要用途是在创建 Session 前发现 `spaceId` 传给
+     * `sessions.create({ space })`。
+     */
+    readonly spaces: Spaces;
     readonly sessionContainers: {
       /**
        * @deprecated 旧版容器级设置菜单，只会出现在该容器的会话页头部。
@@ -510,11 +516,14 @@ declare module 'finch' {
     /**
      * `minitool` 会话位于本工具声明的容器内。`space` 会话被创建到某个具体
      * Space，出现在该 Space 的普通会话列表中，但仍归本 mini tool 所有（因此
-     * 仍能收到 turn 事件并回复微信等外部平台）。
+     * 仍能收到 turn 事件并回复微信等外部平台）。`chat` 会话是既无容器也无
+     * Space 的普通对话——出现在普通会话列表中，效果等同于用户点「新对话」，
+     * 但仍归本 mini tool 所有。
      */
     readonly placement:
       | { readonly type: 'minitool'; readonly minitoolId: string; readonly containerId: string }
-      | { readonly type: 'space'; readonly spaceId: string };
+      | { readonly type: 'space'; readonly spaceId: string }
+      | { readonly type: 'chat' };
     readonly activity: MinitoolSessionActivity;
     readonly profileId?: string;
     /**
@@ -550,16 +559,18 @@ declare module 'finch' {
 
   export interface SessionCreateOptions {
     /**
-     * 会话所在容器，普通小工具会话必填，且须在 manifest
-     * contributes.sessionContainers 中声明。若用户为该容器选择了默认模型，
-     * Finch 会自动用于新会话；否则回退全局默认。若改为把会话创建到具体
-     * Space，则省略此项并设置 `space`。
+     * 会话所在容器，须在 manifest contributes.sessionContainers 中声明。若
+     * 用户为该容器选择了默认模型，Finch 会自动用于新会话；否则回退全局默认。
+     * 与 `space` 互斥。`containerId` 和 `space` 都不传时，创建一个既无容器也
+     * 无 Space 的普通对话（`chat` placement），使用全局默认 cwd/模型——效果
+     * 等同于用户点「新对话」，但会话仍归本 mini tool 所有。
      */
     readonly containerId?: string;
     /**
      * 把会话创建到某个具体 Space，而非小工具容器。会话会出现在该 Space 的
      * 普通会话列表中（交互式，非隐藏于容器），同时仍归本 mini tool 所有。
-     * 与 `containerId` 互斥。
+     * 与 `containerId` 互斥。可先用 `ctx.spaces.list()` 获取可用 Space 的
+     * id/name 列表。
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
@@ -586,6 +597,26 @@ declare module 'finch' {
   export interface SessionListOptions {
     readonly containerId?: string;
     readonly includeArchived?: boolean;
+  }
+
+  /**
+   * 用户已创建的某个 Space 的只读摘要。用于在调用
+   * `sessions.create({ space: { spaceId } })` 之前发现可用的 Space id/name，
+   * 无需本工具正运行在该 Space 内。
+   */
+  export interface SpaceSummary {
+    readonly id: string;
+    /** 展示名称（用户自定义或默认名）。 */
+    readonly name: string;
+    /** 用户设置的短别名（如有）。 */
+    readonly alias?: string;
+    /** 该 Space 绑定的目录（如有）。 */
+    readonly directoryPath?: string;
+  }
+
+  export interface Spaces {
+    /** 列出用户创建的所有 Space，按最近打开时间排序。 */
+    list(): Promise<SpaceSummary[]>;
   }
 
   export interface SessionSendOptions {
@@ -1831,6 +1862,14 @@ declare module 'finch' {
     readonly ui: {
       toast(options: ToastOptions): Promise<ToastResult>;
       confirm(options: ConfirmDialogOptions): Promise<ConfirmDialogResult>;
+    };
+    /**
+     * 只读 Space 目录，页面可直接调用而无需经过本工具后端再转发一次
+     * 消息。与 `ctx.spaces.list()` 是同一份数据，供纯静态 `panelEntry`
+     * 页面（无后端 tool 调用能力）使用。
+     */
+    readonly spaces: {
+      list(): Promise<SpaceSummary[]>;
     };
   }
 
