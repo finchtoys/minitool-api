@@ -2597,8 +2597,15 @@ declare module 'finch' {
    * control, Delivery target, or `AppPanel` lifecycle handle.
    */
   export interface WebviewFullViewContribution {
-    /** Stable navigation title. Override via `i18n/<locale>.json` → `fullView.title`. */
-    readonly title: LocalizedString;
+    /**
+     * Stable navigation title. Omit to inherit the mini tool's own `name`/
+     * `displayName` (and its `i18n/<locale>.json` → `name` override) — a
+     * mini tool's several entry surfaces (this App View, `panelEntry`, its
+     * Composer action…) should read as the same product, so only set this
+     * when the App View genuinely needs a different label. If set, override
+     * per-locale via `i18n/<locale>.json` → `fullView.title`.
+     */
+    readonly title?: LocalizedString;
     /** Sidebar icon. Supports Finch built-in {@link IconRef} or `ext:` SVG. */
     readonly icon?: IconRef;
     /** Packaged `local` pages receive the trusted Bridge and Finch theme variables; public `url` pages do not. */
@@ -2606,8 +2613,14 @@ declare module 'finch' {
   }
 
   export interface AppPanelEntryContribution {
-    /** 入口显示名称。可用 `panelEntry.title` 提供语言覆盖。 */
-    readonly title: LocalizedString;
+    /**
+     * 入口显示名称。留空则继承小工具自身的 `name`/`displayName`
+     * （及其 `i18n/<locale>.json` → `name` 覆盖）——同一小工具的各个入口
+     * （本 Panel App、`fullView`、Composer action…）在用户看来应是同一款
+     * 工具，因此仅在该入口确实需要与小工具本身不同的名称时才显式声明。
+     * 若声明，可用 `i18n/<locale>.json` → `panelEntry.title` 提供语言覆盖。
+     */
+    readonly title?: LocalizedString;
     /** 入口图标。支持 Finch built-in {@link IconRef} 或 `ext:` SVG。 */
     readonly icon?: IconRef;
     /**
