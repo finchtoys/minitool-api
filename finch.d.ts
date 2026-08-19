@@ -141,6 +141,13 @@ declare module 'finch' {
     readonly minitool: MiniToolInfo;
 
     /**
+     * @deprecated 用 `ctx.minitool` 代替。旧版扩展 API（Extension 更名为 MiniTool 之前）
+     * 遗留的兼容别名，指向与 `ctx.minitool` 完全相同的对象，仅为已发布的旧版插件
+     * 包（如 `ctx.extension.id`）保留运行时兼容，不要在新代码中使用。
+     */
+    readonly extension: MiniToolInfo;
+
+    /**
      * 插件私有持久化存储目录的绝对路径。
      * 由 Finch 预先创建，插件可在此读写文件（复杂状态持久化）。
      * 简单 KV 场景直接使用 `ctx.storage`。
