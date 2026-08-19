@@ -58,7 +58,7 @@ Add a path alias so TypeScript resolves `'finch'` to this package's declarations
 
 ## API Overview
 
-All APIs are accessed through `ctx` — `MiniToolContext` is the preferred public type for the single entry point. `ExtensionContext` remains available as a deprecated compatibility alias.
+All APIs are accessed through `ctx` — `MiniToolContext` is the single entry point type.
 
 ### Lifecycle
 
@@ -91,7 +91,7 @@ The second argument `exec` is a `ToolExecutionContext` providing:
 | `exec.logger` | `Logger` | Prefixed log output |
 | `exec.storage` | `Storage` | Extension-private KV store |
 | `exec.secrets` | `Secrets` | Read-only access to declared secrets |
-| `exec.ui.requestForm(spec)` | `Promise<ExtensionFormResult>` | Pop a user form inline during tool execution |
+| `exec.ui.requestForm(spec)` | `Promise<MiniToolFormResult>` | Pop a user form inline during tool execution |
 | `exec.signal` | `AbortSignal \| undefined` | Set to aborted when the user cancels |
 | `exec.cwd` | `string \| undefined` | Active working directory |
 | `exec.sessionId` | `string` | Current session id |
