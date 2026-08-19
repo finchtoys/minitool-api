@@ -2579,6 +2579,13 @@ declare module 'finch' {
      * per-locale via `i18n/<locale>.json` → `appView.title`.
      */
     readonly title?: LocalizedString;
+    /**
+     * Optional longer description shown as the sidebar entry's tooltip
+     * (replaces the default tooltip, which otherwise just repeats the mini
+     * tool's name). Override per-locale via `i18n/<locale>.json` →
+     * `appView.description`.
+     */
+    readonly description?: LocalizedString;
     /** Sidebar icon. Supports Finch built-in {@link IconRef} or `ext:` SVG. */
     readonly icon?: IconRef;
     /** Packaged `local` pages receive the trusted Bridge and Finch theme variables; public `url` pages do not. */
