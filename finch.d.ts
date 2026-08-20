@@ -897,6 +897,13 @@ declare module 'finch' {
     readonly message: string;
     /** 0–100；省略时 Finch 展示不确定进度动画。 */
     readonly percent?: number;
+    /** 设为 'image' 时渲染专用的生图动效，取代默认进度条。 */
+    readonly kind?: 'image';
+    /** kind: 'image' 时展示的附加信息。 */
+    readonly image?: {
+      /** [宽, 高] 像素，例如 [1024, 1024]；展示为角标，同时决定画布自身尺寸——按与正方形大致相同的面积缩放，长方形/竖形分辨率会渲染出成比例变宽/变高的画布，而不是被裁成正方形。 */
+      readonly resolution?: readonly [number, number];
+    };
   }
 
   /** 单次工具调用的进度上报入口。 */
