@@ -1878,6 +1878,35 @@ declare module 'finch' {
     readonly spaces: {
       list(): Promise<SpaceSummary[]>;
     };
+    /**
+     * 仅在 `contributes.appView` 页面内可用（`view === 'appView'`）：把内置
+     * 的文件预览 / 浏览器面板，或另一个已声明 `embeddable: true` 的小程序
+     * 的 `appView` 页面，作为下一层级压入 Appview 的导航栈。栈会显示为多级
+     * 面包屑（`小程序 > 当前小程序 > 文件预览（report.md）> ...`），点击
+     * 面包屑中的某一级会关闭它右侧（含自身）的所有层级，回到该级 —— 这是
+     * 唯一的返回方式，没有单独的"关闭"调用。
+     *
+     * 栈深度有限（当前上限 3 层），超出会 reject；`openApp` 额外做防环检测
+     * ——不能把已经在当前栈路径上的小程序再打开一次。不做状态保留：某一层
+     * 被关闭后会被销毁，不保留滚动位置等内部状态，下次重新打开会重新加载。
+     *
+     * @example
+     * document.getElementById('open-report').addEventListener('click', async () => {
+     *   await window.finch.appView.openPreview('/Users/me/report.md');
+     * });
+     */
+    readonly appView: {
+      /** 压入内置文件预览面板，展示 `path` 指向的本地文件。 */
+      openPreview(path: string): Promise<{ id: string }>;
+      /** 压入内置浏览器面板，加载给定的 http(s) 地址。 */
+      openBrowser(url: string): Promise<{ id: string }>;
+      /**
+       * 压入另一个小程序的 `contributes.appView` 页面。目标小程序必须在自己
+       * 的 manifest 中声明 `contributes.appView.embeddable: true`，否则会
+       * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。
+       */
+      openApp(extensionId: string): Promise<{ id: string }>;
+    };
   }
 
   /** 公开的 macOS 置顶层级，仅支持常规与浮动窗口。 */
@@ -2597,6 +2626,15 @@ declare module 'finch' {
     readonly icon?: IconRef;
     /** Packaged `local` pages receive the trusted Bridge and Finch theme variables; public `url` pages do not. */
     readonly source: AppPanelEntrySource;
+    /**
+     * Whether another mini tool's own App View may open this page as a
+     * nested child inside its Appview navigation stack via
+     * `window.finch.appView.openApp(extensionId)`. Defaults to `false` —
+     * a mini tool must opt in explicitly before others can embed it this
+     * way; Finch's own built-in file preview / browser panels need no such
+     * declaration.
+     */
+    readonly embeddable?: boolean;
   }
 
   /**
