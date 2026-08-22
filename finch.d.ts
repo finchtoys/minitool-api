@@ -146,6 +146,9 @@ declare module 'finch' {
     /** 当前 mini tool 自身元信息（只读）。 */
     readonly minitool: MiniToolInfo;
 
+    /** 当前运行时暴露的小程序 API surface 探针。 */
+    readonly api: MiniToolApi;
+
     /**
      * @deprecated 用 `ctx.minitool` 代替。旧版扩展 API（Extension 更名为 MiniTool 之前）
      * 遗留的兼容别名，指向与 `ctx.minitool` 完全相同的对象，仅为已发布的旧版插件
@@ -482,6 +485,20 @@ declare module 'finch' {
   export interface App {
     /** 获取当前 Finch App 基本信息。 */
     getInfo(): Promise<AppInfo>;
+  }
+
+  /** 当前 Finch 暴露的小程序 API surface 探针。 */
+  export interface MiniToolApi {
+    /**
+     * 当前运行时的小程序 API 是否提供指定成员。
+     * `capability` 是相对 `MiniToolContext` 根节点的点分路径，例如
+     * `ui.createCanvasWindow`。返回 `true` 只表示 API 存在；调用所需的
+     * manifest 权限、当前 Session/Panel 上下文和参数约束仍需另行满足。
+     *
+     * 小程序仍应通过 manifest `minVersion` 声明使用本探针所需的最低
+     * Finch 版本，再用本方法对后续新增 API 做渐进增强。
+     */
+    supports(capability: string): boolean;
   }
 
   /**
