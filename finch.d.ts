@@ -100,6 +100,12 @@ declare module 'finch' {
     appendCodeblock(value: string, language?: string): MarkdownString;
   }
 
+  /** Finch 宿主级导航；后端 `ctx.navigation` 与页面 `window.finch.navigation` 共用此接口。 */
+  export interface Navigation {
+    /** 在当前 Finch 窗口打开已有 Session。 */
+    openSession(sessionId: string): Promise<void>;
+  }
+
   // ════════════════════════════════════════════════════════════════════════════
   // § 1  插件生命周期
   // ════════════════════════════════════════════════════════════════════════════
@@ -226,6 +232,9 @@ declare module 'finch' {
      * 后续版本会增加 `ctx.commands.register()` 支持。
      */
     readonly commands: undefined;
+
+    /** Finch 宿主级导航；不依赖 Composer Action，可在任意后端回调中调用。 */
+    readonly navigation: Navigation;
 
     /** Finch 内置 Browser Panel。每次调用在当前 Panel scope 新建一个 Browser Tab。 */
     readonly browser: {
@@ -1215,11 +1224,8 @@ declare module 'finch' {
   export interface ComposerActionActions {
     /** Composer 域 helper：内联 confirm、填充输入框等。 */
     composer: ComposerActionComposerActions;
-    /** 用户触发 ComposerAction 时可用的 App 导航能力。 */
-    navigation: {
-      /** 在当前 Finch 窗口打开已有 Session。 */
-      openSession(sessionId: string): Promise<void>;
-    };
+    /** @deprecated 请改用激活时捕获的 `ctx.navigation`。 */
+    navigation: Navigation;
     /**
      * @deprecated 请使用 `actions.composer.fill(text, options)`。
      *
@@ -1883,10 +1889,7 @@ declare module 'finch' {
      * guest webview 自己加载自定义协议，也不会通过系统外部协议处理器跳出
      * 当前窗口；调用要求来自真实用户手势。
      */
-    readonly navigation: {
-      /** 在当前 Finch 窗口打开已有 Session。 */
-      openSession(sessionId: string): Promise<void>;
-    };
+    readonly navigation: Navigation;
     /**
      * 仅在 `contributes.appView` 页面内可用（`view === 'appView'`）：把内置
      * 的文件预览 / 浏览器面板，或另一个已声明 `embeddable: true` 的小程序
