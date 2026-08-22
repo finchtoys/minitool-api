@@ -1879,6 +1879,15 @@ declare module 'finch' {
       list(): Promise<SpaceSummary[]>;
     };
     /**
+     * 宿主级导航能力。与普通 `<a href="finch://…">` 不同，这些方法不会让
+     * guest webview 自己加载自定义协议，也不会通过系统外部协议处理器跳出
+     * 当前窗口；调用要求来自真实用户手势。
+     */
+    readonly navigation: {
+      /** 在当前 Finch 窗口打开已有 Session。 */
+      openSession(sessionId: string): Promise<void>;
+    };
+    /**
      * 仅在 `contributes.appView` 页面内可用（`view === 'appView'`）：把内置
      * 的文件预览 / 浏览器面板，或另一个已声明 `embeddable: true` 的小程序
      * 的 `appView` 页面，作为下一层级压入 Appview 的导航栈。栈会显示为多级
