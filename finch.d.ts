@@ -1733,8 +1733,8 @@ declare module 'finch' {
     readonly spaceName: string;
     /**
      * 当前 Finch App 语言（`ctx.app.getInfo().locale` 的同一个值），页面可据此
-     * 本地渲染文案而不必再发一次工具调用去问后端。目前仅 `view === 'appView'`
-     * 时下发；Panel App tab 暂缺，计划后续补齐（见 `docs/minitool-full-view.md`）。
+     * 本地渲染文案而不必再发一次工具调用去问后端。所有 scope（`session`/`home`/
+     * `container`/`appView`）都会下发。
      */
     readonly locale?: AppLocale;
     /** 本次打开带入的上下文；页面重建后仍从当前 Session 的 Panel Tab 恢复。 */
