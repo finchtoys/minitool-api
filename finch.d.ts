@@ -261,6 +261,11 @@ declare module 'finch' {
        */
       openFilePreview(path: string): Promise<void>;
       /**
+       * 在当前 Panel scope 打开 Finch 原生双文件或 Git commit/ref Diff。
+       * 仅传入要比较的路径/ref；右侧 Panel 或弹窗由用户的「改动与文件预览」设置决定。
+       */
+      openDiff(request: AppViewDiffRequest): Promise<void>;
+      /**
        * 打开 `contributes.appPanel` 声明的唯一 Panel App。
        * 声明决定页面来源、标题、图标与工具栏；此调用只决定 single/multiple
        * 实例策略。Panel 可绑定 Session、Home 或其他当前 Panel scope。
@@ -1665,11 +1670,13 @@ declare module 'finch' {
   /**
    * 面板自身工具栏的一项——固定渲染在标签栏下方一整行（只要该面板处于激活
    * 状态），不藏进下拉菜单里，效果类似内置浏览器面板自带的地址/操作栏。
-   * 可自由混排普通按钮、会展开下拉菜单的 `menu` 按钮、纯分隔线，以及把后续
-   * 项推到行尾的弹性空白：
+   * 可自由混排静态图标标题、普通按钮、会展开下拉菜单的 `menu` 按钮、纯分隔线，
+   * 以及把后续项推到行尾的弹性空白。标题项仅展示，不会向页面发送消息；它
+   * 也需要稳定的 `id`，以便通过 {@link AppPanel.updateToolbarItem} 更新：
    *
    * ```ts
    * toolbar: [
+   *   { type: 'title', id: 'section-title', icon: 'book-open', label: '资料库' },
    *   { id: 'reload', icon: 'rotate-cw', tooltip: '重新加载' },
    *   { type: 'separator' },
    *   { id: 'share', label: '分享', icon: 'share-2' },
@@ -1685,8 +1692,17 @@ declare module 'finch' {
   export type AppPanelToolbarItem =
     | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean }
     | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly AppPanelMenuItem[] }
+    | { readonly type: 'title'; readonly id: string; readonly icon: IconRef; readonly label: string }
     | { readonly type: 'separator' }
     | { readonly type: 'spacer' };
+
+  /** 可修改的顶层工具栏项展示字段。 */
+  export interface AppPanelToolbarItemPatch {
+    readonly label?: string;
+    readonly icon?: IconRef;
+    readonly tooltip?: string;
+    readonly disabled?: boolean;
+  }
 
   /**
    * AppPanel 页面收到的 Finch 主题 CSS 变量（`--finch-*`）——在完整
@@ -1801,6 +1817,10 @@ declare module 'finch' {
     readonly visible: boolean;
     reveal(): Promise<void>;
     postMessage(message: unknown): Promise<void>;
+    /** 原子替换该 Panel App 的整行工具栏。 */
+    setToolbar(items: readonly AppPanelToolbarItem[]): Promise<void>;
+    /** 按稳定 id 更新一个顶层工具栏项的展示字段。 */
+    updateToolbarItem(itemId: string, patch: AppPanelToolbarItemPatch): Promise<void>;
     onDidReceiveMessage(listener: (message: unknown) => unknown): Disposable;
     onDidChangeVisibility(listener: (visible: boolean) => unknown): Disposable;
     onDidDispose(listener: () => unknown): Disposable;
@@ -1850,6 +1870,11 @@ declare module 'finch' {
         /** Optional local image path instead of inline base64. Resolved by Main. */
         readonly imagePath?: string;
       };
+
+  /** Host-rendered Diff input. Finch chooses Panel or modal from the user's settings. */
+  export type AppViewDiffRequest =
+    | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
+    | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
 
   /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
   export interface WebviewBridgeApi {
@@ -1908,14 +1933,16 @@ declare module 'finch' {
      */
     readonly navigation: Navigation;
     /**
-     * 仅在 `contributes.appView` 页面内可用（`view === 'appView'`）：把内置
-     * 的文件预览 / 浏览器面板，或另一个已声明 `embeddable: true` 的小程序
-     * 的 `appView` 页面，作为下一层级压入 Appview 的导航栈。栈会显示为多级
-     * 面包屑（`小程序 > 当前小程序 > 文件预览（report.md）> ...`），点击
-     * 面包屑中的某一级会关闭它右侧（含自身）的所有层级，回到该级 —— 这是
-     * 唯一的返回方式，没有单独的"关闭"调用。
+     * 可信本地小程序页面均可调用。文件预览仅在 `contributes.appView` 页面
+     * 内可用；Diff 可在 App View 或 Panel App 中调用，二者都交给 Finch 宿主
+     * 打开并遵循用户的「改动与文件预览」Panel/弹窗设置；浏览器或另一个
+     * 已声明 `embeddable: true` 的小程序 `appView` 页面
+     * 才作为下一层级压入 Appview 导航栈。栈会显示为多级面包屑
+     * （`小程序 > 当前小程序 > 浏览器 > ...`）；点击面包屑中的某一级会
+     * 关闭它右侧（含自身）的所有层级，回到该级 —— 这是唯一的返回方式，
+     * 没有单独的"关闭"调用。
      *
-     * 栈深度有限（当前上限 3 层），超出会 reject；`openApp` 额外做防环检测
+     * 浏览器/小程序栈深度有限（当前上限 3 层），超出会 reject；`openApp` 额外做防环检测
      * ——不能把已经在当前栈路径上的小程序再打开一次。不做状态保留：某一层
      * 被关闭后会被销毁，不保留滚动位置等内部状态，下次重新打开会重新加载。
      *
@@ -1925,8 +1952,14 @@ declare module 'finch' {
      * });
      */
     readonly appView: {
-      /** 压入内置文件预览面板，展示 `path` 指向的本地文件。 */
+      /** 用 Finch 内置文件预览展示本地文件；展示位置遵循用户设置。 */
       openPreview(path: string): Promise<{ id: string }>;
+      /**
+       * 用 Finch 内置 Diff 展示两个本地文件，或 Git repository 中两个 commit/ref
+       * 的多文件差异；App View 和 Panel App 都可调用。展示位置遵循用户设置，
+       * 调用方不能指定 Panel/弹窗。允许异步准备本地快照后调用。
+       */
+      openDiff(request: AppViewDiffRequest): Promise<{ id: string }>;
       /** 压入内置浏览器面板，加载给定的 http(s) 地址。 */
       openBrowser(url: string): Promise<{ id: string }>;
       /**
