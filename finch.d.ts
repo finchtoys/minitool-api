@@ -640,7 +640,7 @@ declare module 'finch' {
      * session container 入口显示提醒红点。
      */
     readonly activity?: MinitoolSessionActivity;
-    /** 后台/Bot Session 默认 acceptCalls；可显式设为 ask。 */
+    /** 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
     /** 提供时，与 Session 创建原子接收；失败不会留下 ghost Session。 */
     readonly initialMessage?: SessionUserMessage;
@@ -834,6 +834,11 @@ declare module 'finch' {
     get(sessionId: string): Promise<MinitoolSessionDescriptor | undefined>;
     list(options?: SessionListOptions): Promise<MinitoolSessionDescriptor[]>;
     send(sessionId: string, message: SessionUserMessage, options?: SessionSendOptions): Promise<SessionSendReceipt>;
+    /**
+     * 动态修改当前 mini tool 自己拥有的 Session 权限模式并持久化。
+     * acceptCalls 仍不会自动批准危险操作；不支持 auto。
+     */
+    setPermissionMode(sessionId: string, permissionMode: 'ask' | 'acceptCalls'): Promise<void>;
     /** 等待指定 turn 完成或失败，无需 sleep/polling。 */
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
