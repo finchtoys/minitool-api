@@ -259,7 +259,7 @@ declare module 'finch' {
        * @example
        * await ctx.ui.openFilePreview('/workspace/README.md');
        */
-      openFilePreview(path: string): Promise<void>;
+      openFilePreview(path: string, options?: FilePreviewOptions): Promise<void>;
       /**
        * 在当前 Panel scope 打开 Finch 原生双文件或 Git commit/ref Diff。
        * 仅传入要比较的路径/ref；右侧 Panel 或弹窗由用户的「改动与文件预览」设置决定。
@@ -1952,6 +1952,15 @@ declare module 'finch' {
     | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
     | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
 
+  /** 选择 Finch 原生文件预览打开 HTML 的方式。 */
+  export type HtmlPreviewMode = 'browser' | 'code';
+
+  /** 原生文件预览的可选行为。 */
+  export interface FilePreviewOptions {
+    /** HTML/HTM 默认在浏览器打开；传入 `code` 可查看源码。 */
+    readonly htmlPreview?: HtmlPreviewMode;
+  }
+
   /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
   export interface WebviewBridgeApi {
     postMessage(message: unknown): void;
@@ -2029,7 +2038,7 @@ declare module 'finch' {
      */
     readonly appView: {
       /** 用 Finch 内置文件预览展示本地文件；展示位置遵循用户设置。 */
-      openPreview(path: string): Promise<{ id: string }>;
+      openPreview(path: string, options?: FilePreviewOptions): Promise<{ id: string }>;
       /**
        * 用 Finch 内置 Diff 展示两个本地文件，或 Git repository 中两个 commit/ref
        * 的多文件差异；App View 和 Panel App 都可调用。展示位置遵循用户设置，
