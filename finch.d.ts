@@ -1750,12 +1750,18 @@ declare module 'finch' {
    * 以及把后续项推到行尾的弹性空白。标题项仅展示，不会向页面发送消息；它
    * 也需要稳定的 `id`，以便通过 {@link AppPanel.updateToolbarItem} 更新：
    *
+   * `button`/`menu` 项还支持 `checked`，用来做开关型工具栏按钮（如「显示行号」
+   * 这类切换）：设为 `true` 时按钮渲染成按下态（accent 高亮背景 + `aria-pressed`），
+   * 由小工具自己在 `finch:menu` 消息处理里维护这份开关状态并调用
+   * `updateToolbarItem(id, { checked })` 同步：
+   *
    * ```ts
    * toolbar: [
    *   { type: 'title', id: 'section-title', icon: 'book-open', label: '资料库' },
    *   { id: 'reload', icon: 'rotate-cw', tooltip: '重新加载' },
    *   { type: 'separator' },
    *   { id: 'share', label: '分享', icon: 'share-2' },
+   *   { id: 'wrap', label: '自动换行', icon: 'wrap-text', checked: true },
    *   { type: 'spacer' },
    *   { type: 'menu', id: 'more', icon: 'ellipsis', items: [
    *     { id: 'clear-log', label: '清空日志' },
@@ -1766,8 +1772,8 @@ declare module 'finch' {
    * ```
    */
   export type AppPanelToolbarItem =
-    | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean }
-    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly items: readonly AppPanelMenuItem[] }
+    | { readonly type?: 'button'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly checked?: boolean }
+    | { readonly type: 'menu'; readonly id: string; readonly label?: string; readonly icon?: IconRef; readonly tooltip?: string; readonly disabled?: boolean; readonly checked?: boolean; readonly items: readonly AppPanelMenuItem[] }
     | { readonly type: 'title'; readonly id: string; readonly icon: IconRef; readonly label: string }
     | { readonly type: 'separator' }
     | { readonly type: 'spacer' };
@@ -1778,6 +1784,8 @@ declare module 'finch' {
     readonly icon?: IconRef;
     readonly tooltip?: string;
     readonly disabled?: boolean;
+    /** 切换按钮/menu 触发器的按下（checked）态；见 {@link AppPanelToolbarItem}。 */
+    readonly checked?: boolean;
   }
 
   /**
