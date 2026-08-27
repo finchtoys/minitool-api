@@ -1898,6 +1898,7 @@ declare module 'finch' {
     readonly spaceName?: string;
     /** 当前 Panel 实例的打开上下文；single 实例再次打开时会更新。 */
     readonly payload?: JsonValue;
+    /** 仅当本实例是实际展开、未被响应式隐藏的 Panel 中当前选中 tab 时为 true。 */
     readonly visible: boolean;
     reveal(): Promise<void>;
     postMessage(message: unknown): Promise<void>;
@@ -1906,6 +1907,11 @@ declare module 'finch' {
     /** 按稳定 id 更新一个顶层工具栏项的展示字段。 */
     updateToolbarItem(itemId: string, patch: AppPanelToolbarItemPatch): Promise<void>;
     onDidReceiveMessage(listener: (message: unknown) => unknown): Disposable;
+    /**
+     * tab 选择、scope 切换、Panel 折叠/展开或响应式自动隐藏导致实际可见性变化时触发。
+     * `true` 不代表 guest 页面已安装消息监听器；恢复后端状态时，页面仍须在
+     * `window.finch.onMessage` 安装后主动发送 ready/init 握手。
+     */
     onDidChangeVisibility(listener: (visible: boolean) => unknown): Disposable;
     onDidDispose(listener: () => unknown): Disposable;
     dispose(): void;
