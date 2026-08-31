@@ -90,7 +90,7 @@ The second argument `exec` is a `ToolExecutionContext` providing:
 |---|---|---|
 | `exec.logger` | `Logger` | Prefixed log output |
 | `exec.storage` | `Storage` | Extension-private KV store |
-| `exec.secrets` | `Secrets` | Read-only access to declared secrets |
+| `exec.secrets` | `Secrets` | Encrypted `get` / `set` / `delete` access to declared secret keys |
 | `exec.ui.requestForm(spec)` | `Promise<MiniToolFormResult>` | Pop a user form inline during tool execution |
 | `exec.signal` | `AbortSignal \| undefined` | Set to aborted when the user cancels |
 | `exec.cwd` | `string \| undefined` | Active working directory |
@@ -194,6 +194,20 @@ ctx.icons.register('my-icons', {
 });
 ```
 
+### More Host APIs
+
+| API | Purpose |
+|---|---|
+| `ctx.navigation` / `ctx.browser` | Navigate Finch and open URLs in the built-in Browser Panel |
+| `ctx.oauth` | Mini-tool-scoped OAuth connections and authorization requests |
+| `ctx.sessions` / `ctx.spaces` | Create and communicate with owned Sessions and discover Spaces (permission-gated) |
+| `ctx.minitools` | Read contribution snapshots from enabled mini tools |
+| `ctx.settingsMenu` | Register the unified settings menu shown in the Toolcase and Session containers |
+| `ctx.events` / `ctx.status` / `ctx.notifications` | Observe Agent activity and app status |
+| `ctx.ui` | Toasts, dialogs, file/diff previews, file picker, Panel Apps, Canvas windows, and delivery entries |
+
+Panel surfaces are declared through `contributes.appPanel` / `contributes.appView` and opened with `ctx.ui.createPanel()`. The historical `createWebviewPanel` API is no longer part of the declarations. `ctx.commands` remains reserved and is currently `undefined`.
+
 ### `ctx.session` / `ctx.workspace` — Read-only Context
 
 ```ts
@@ -236,7 +250,7 @@ All mini tool metadata lives under the `finch` key in `package.json`. Use `MiniT
 
 ### Localization
 
-Put locale overrides in `i18n/zh-CN.json` (or `i18n/en-US.json`). The `name`, `description`, `systemPrompt`, and `promptGuides` fields are looked up automatically.
+Put locale overrides in `i18n/zh-CN.json`, `i18n/zh-HK.json`, or `i18n/en-US.json`. The `name`, `description`, `systemPrompt`, and `promptGuides` fields are looked up automatically.
 
 ```jsonc
 // i18n/zh-CN.json
