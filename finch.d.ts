@@ -835,6 +835,15 @@ declare module 'finch' {
     list(options?: SessionListOptions): Promise<MinitoolSessionDescriptor[]>;
     send(sessionId: string, message: SessionUserMessage, options?: SessionSendOptions): Promise<SessionSendReceipt>;
     /**
+     * 取消一个 turn，只影响这一个 turn，不影响同一 Session 里其他排队中的 turn。
+     * 若目标 turn 仍在排队，直接从队列移除并标记为失败；若正在运行，向对应
+     * Runner 发起协作式停止（与 UI 上第一次按 Esc / 点击停止按钮相同），需要
+     * Runner 响应后才会落定终态，不会立即强制杀死进程。可配合
+     * `waitForTurn()` 等待中断后的终态。已完成/已失败/不存在的 turn 返回
+     * `false`。
+     */
+    cancelTurn(sessionId: string, turnId: string): Promise<boolean>;
+    /**
      * 动态修改当前 mini tool 自己拥有的 Session 权限模式并持久化。
      * acceptCalls 仍不会自动批准危险操作；不支持 auto。
      */
@@ -1968,6 +1977,19 @@ declare module 'finch' {
     | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
     | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
 
+  /** App View 面包屑中由页面自己拥有的一层（一条内部路由）。 */
+  export interface AppViewPageLevel {
+    /**
+     * 页面自定的层级 ID，`onNavigate` 会原样回传，用它决定退回哪条路由。
+     * 省略时由宿主生成；同一页面内应保持唯一。
+     */
+    readonly id?: string;
+    /** 面包屑上显示的标题，超长会被截断。 */
+    readonly title: string;
+    /** 可选图标，与 `panel.setIcon()` 同一套写法（含 `ext:` 资源）。 */
+    readonly icon?: string;
+  }
+
   /** 选择 Finch 原生文件预览打开 HTML 的方式。 */
   export type HtmlPreviewMode = 'browser' | 'code';
 
@@ -2034,18 +2056,16 @@ declare module 'finch' {
      */
     readonly navigation: Navigation;
     /**
-     * 可信本地小程序页面均可调用。文件预览仅在 `contributes.appView` 页面
-     * 内可用；Diff 可在 App View 或 Panel App 中调用，二者都交给 Finch 宿主
-     * 打开并遵循用户的「改动与文件预览」Panel/弹窗设置；浏览器或另一个
-     * 已声明 `embeddable: true` 的小程序 `appView` 页面
-     * 才作为下一层级压入 Appview 导航栈。栈会显示为多级面包屑
-     * （`小程序 > 当前小程序 > 浏览器 > ...`）；点击面包屑中的某一级会
-     * 关闭它右侧（含自身）的所有层级，回到该级 —— 这是唯一的返回方式，
-     * 没有单独的"关闭"调用。
+     * 可信本地小程序页面均可调用。文件预览、Diff、内置浏览器、另一个已声明
+     * `embeddable: true` 的小程序 `appView` 页面，都作为下一层级压入 App View
+     * 导航栈（图片预览是唯一例外，仍然是「看一眼就关」的弹窗，不占层级）。
+     * 栈显示为多级面包屑（`小程序 > 当前小程序 > 预览 > ...`）；点击其中某一级
+     * 会关闭它右侧（含自身）的所有层级，回到该级 —— 这是唯一的返回方式。
      *
-     * 浏览器/小程序栈深度有限（当前上限 3 层），超出会 reject；`openApp` 额外做防环检测
-     * ——不能把已经在当前栈路径上的小程序再打开一次。不做状态保留：某一层
-     * 被关闭后会被销毁，不保留滚动位置等内部状态，下次重新打开会重新加载。
+     * `breadcrumb` 让页面把自己的内部路由也登记成面包屑层级，与上面这些
+     * 宿主层级共用同一条栈和同一个深度上限（当前 5 层，超出会 reject）。
+     * `openApp` 额外做防环检测——不能把已经在当前栈路径上的小程序再打开一次。
+     * 宿主层级不做状态保留：被关闭后即销毁，不保留滚动位置等内部状态。
      *
      * @example
      * document.getElementById('open-report').addEventListener('click', async () => {
@@ -2053,12 +2073,14 @@ declare module 'finch' {
      * });
      */
     readonly appView: {
-      /** 用 Finch 内置文件预览展示本地文件；展示位置遵循用户设置。 */
+      /**
+       * 用 Finch 内置文件预览压入下一层级，返回该层级的句柄 ID。
+       * 图片走「看一眼就关」的弹窗，不占层级，此时 `id` 为空串。
+       */
       openPreview(path: string, options?: FilePreviewOptions): Promise<{ id: string }>;
       /**
-       * 用 Finch 内置 Diff 展示两个本地文件，或 Git repository 中两个 commit/ref
-       * 的多文件差异；App View 和 Panel App 都可调用。展示位置遵循用户设置，
-       * 调用方不能指定 Panel/弹窗。允许异步准备本地快照后调用。
+       * 用 Finch 内置 Diff 压入下一层级，展示两个本地文件，或 Git repository 中
+       * 两个 commit/ref 的多文件差异。允许异步准备本地快照后调用。
        */
       openDiff(request: AppViewDiffRequest): Promise<{ id: string }>;
       /** 压入内置浏览器面板，加载给定的 http(s) 地址。 */
@@ -2069,6 +2091,34 @@ declare module 'finch' {
        * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。
        */
       openApp(extensionId: string): Promise<{ id: string }>;
+      /**
+       * 把页面自己的路由登记成面包屑层级。这些层级只是标签：宿主不会改动页面
+       * 内容，也不会替页面导航，页面停在哪由页面自己决定。
+       *
+       * 只有位于栈顶、当前真正显示在屏幕上的那个页面才能改自己的层级；被
+       * 预览/Diff/浏览器/另一个小程序盖住时调用会 reject（此时用户看到的
+       * 面包屑末端不是你）。这些调用不需要用户手势——SPA 里的重定向、恢复、
+       * deep link 本来就不是点出来的。
+       */
+      readonly breadcrumb: {
+        /** 用一组层级整体替换当前页面已登记的层级；传空数组即回到页面首页。 */
+        set(levels: AppViewPageLevel[]): Promise<void>;
+        /** 追加一层，返回该层级 ID（未提供 `id` 时由宿主生成）。 */
+        push(level: AppViewPageLevel): Promise<{ id: string }>;
+        /** 弹出末尾若干层，默认 1 层；超出已有层数时按已有层数处理。 */
+        pop(count?: number): Promise<void>;
+        /**
+         * 用户点了更靠前的面包屑。宿主已经把后面的层级截断，页面负责把自己的
+         * 路由退回 `id` 对应的位置；`id` 为空串表示回到页面首页。
+         */
+        onNavigate(listener: (payload: { id: string; index: number }) => void): () => void;
+        /**
+         * 返回/前进或重启后恢复现场。宿主只能恢复面包屑标签，具体路由要页面
+         * 自己走回去；若走不回去，调用 `set([])` 把这些层级清掉即可。
+         * 订阅时会补发最近一次快照，晚注册也不会漏。
+         */
+        onRestore(listener: (payload: { levels: AppViewPageLevel[] }) => void): () => void;
+      };
     };
   }
 
