@@ -617,14 +617,20 @@ declare module 'finch' {
      * 用户为该容器选择了默认模型，Finch 会自动用于新会话；否则回退全局默认。
      * 与 `space` 互斥。`containerId` 和 `space` 都不传时，创建一个既无容器也
      * 无 Space 的普通对话（`chat` placement），使用全局默认 cwd/模型——效果
-     * 等同于用户点「新对话」，但会话仍归本 mini tool 所有。
+     * 等同于用户点「新对话」，但会话仍归本 mini tool 所有。该 placement 同样
+     * 支持 `activity: 'background'`，效果与 `space` 一致：不出现在普通对话
+     * 列表里，完成时也不弹通知，只能由本 mini tool 自行跳转打开；仅在等待
+     * 用户授权/回答/表单时才会提醒。
      */
     readonly containerId?: string;
     /**
-     * 把会话创建到某个具体 Space，而非小工具容器。会话会出现在该 Space 的
-     * 普通会话列表中（交互式，非隐藏于容器），同时仍归本 mini tool 所有。
-     * 与 `containerId` 互斥。可先用 `ctx.spaces.list()` 获取可用 Space 的
-     * id/name 列表。
+     * 把会话创建到某个具体 Space，而非小工具容器。会话默认会出现在该 Space
+     * 的普通会话列表中（非隐藏于容器），同时仍归本 mini tool 所有。与
+     * `containerId` 互斥。可先用 `ctx.spaces.list()` 获取可用 Space 的
+     * id/name 列表。若同时传入 `activity: 'background'`，该会话会从空间的
+     * 普通会话列表、置顶区、首页最近等处隐藏——只能由本 mini tool 自己跳转
+     * 打开；完成时不弹系统通知/Dock 角标，仅在等待用户授权、回答或表单时才
+     * 会照常提醒——适合"悄悄跑、卡住才叫人"的场景。
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
@@ -639,7 +645,10 @@ declare module 'finch' {
     readonly context?: 'caller';
     /**
      * `background` 容器会话在完成或等待时不弹系统通知，只在所属
-     * session container 入口显示提醒红点。
+     * session container 入口显示提醒红点。`background` + `space` 或
+     * `background` + `chat`（不传 `containerId`/`space`）会话则会从对应的
+     * 普通会话列表、置顶区、首页最近等处隐藏，只能由本 mini tool 自己跳转
+     * 打开：完成时静默，但等待用户授权/回答/表单时仍会照常提醒。
      */
     readonly activity?: MinitoolSessionActivity;
     /** 默认 acceptCalls；可显式设为 ask。 */
