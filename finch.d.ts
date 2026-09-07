@@ -540,7 +540,9 @@ declare module 'finch' {
     /** 插件安装目录绝对路径。 */
     readonly extensionPath: string;
     readonly isActive: boolean;
-    readonly scope: 'global' | 'space';
+    /** 当前运行时使用 global/personal；space 仅保留旧版类型兼容。 */
+    readonly scope: 'global' | 'personal' | 'space';
+    /** @deprecated 项目级/Space 级安装已不再支持，删除版本未定。 */
     readonly spaceId?: string;
   }
 
@@ -2083,14 +2085,14 @@ declare module 'finch' {
        * 两个 commit/ref 的多文件差异。允许异步准备本地快照后调用。
        */
       openDiff(request: AppViewDiffRequest): Promise<{ id: string }>;
-      /** 压入内置浏览器面板，加载给定的 http(s) 地址。 */
-      openBrowser(url: string): Promise<{ id: string }>;
+      /** 压入内置浏览器面板，加载给定的 http(s) 地址，并返回子层句柄 ID。 */
+      openBrowser(url: string): Promise<string>;
       /**
        * 压入另一个小程序的 `contributes.appView` 页面。目标小程序必须在自己
        * 的 manifest 中声明 `contributes.appView.embeddable: true`，否则会
-       * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。
+       * reject；默认拒绝，需要显式声明才能被其他小程序嵌入。返回子层句柄 ID。
        */
-      openApp(extensionId: string): Promise<{ id: string }>;
+      openApp(extensionId: string): Promise<string>;
       /**
        * 把页面自己的路由登记成面包屑层级。这些层级只是标签：宿主不会改动页面
        * 内容，也不会替页面导航，页面停在哪由页面自己决定。
