@@ -2463,26 +2463,108 @@ declare module 'finch' {
     readonly cacheReadTokens: number;
   }
 
+  export interface AgentEventErrorDetail {
+    readonly provider?: string;
+    readonly api?: string;
+    readonly model?: string;
+    readonly httpStatus?: number;
+    readonly providerCode?: string;
+    readonly providerType?: string;
+    readonly sdkCode?: string | number;
+    readonly requestId?: string;
+    readonly retryAfterMs?: number;
+    readonly origin?: 'provider' | 'gateway' | 'unknown';
+    readonly transport?: 'http' | 'sse' | 'websocket';
+    readonly phase?: 'connect' | 'headers' | 'stream' | 'response';
+  }
+
+  export type AgentEventExecutionPhase =
+    | 'starting'
+    | 'requesting'
+    | 'streaming'
+    | 'tool_running'
+    | 'waiting_user'
+    | 'retry_wait'
+    | 'interrupting'
+    | 'completed'
+    | 'interrupted'
+    | 'failed';
+
+  export interface AgentEventRetryState {
+    readonly attempt: number;
+    readonly maxAttempts: number;
+    readonly retryAt: string;
+    readonly delayMs: number;
+    readonly reason: string;
+    readonly interruptible: true;
+  }
+
+  export type AgentEventToolSource =
+    | { readonly type: 'builtin' }
+    | { readonly type: 'extension'; readonly extensionId: string; readonly extensionName: string };
+
+  export type AgentEventAttachmentKind = 'image' | 'pdf' | 'text' | 'file';
+
+  export interface AgentEventAttachment {
+    readonly id: string;
+    readonly name: string;
+    readonly mimeType: string;
+    readonly size: number;
+    readonly kind: AgentEventAttachmentKind;
+    readonly content?: string;
+    readonly path?: string;
+  }
+
   /**
-   * Finch Agent 运行事件的插件可见只读快照。
-   * 仅包含状态元数据；用户文本、工具输入、工具结果等内容字段会在主进程侧清洗掉。
+   * Finch Agent 运行事件的只读快照。
+   * 默认只包含清洗后的状态元数据；声明并获准
+   * `permissions.agentEvents: "full"` 后可读取完整内容字段。
    */
   export interface AgentEvent {
     readonly id: string;
     readonly kind: AgentEventKind;
-    readonly createdAt: string;
-    readonly sessionId?: string;
+    readonly compactionPhase?: 'start' | 'end';
+    readonly text?: string;
     readonly toolName?: string;
     readonly toolUseId?: string;
+    readonly toolInput?: unknown;
+    readonly toolProgress?: ToolProgressUpdate;
+    readonly toolResult?: unknown;
+    readonly toolResultOverflow?: boolean;
     readonly isToolError?: boolean;
     readonly isRetryable?: boolean;
     readonly errorCategory?: string;
+    readonly errorDetail?: AgentEventErrorDetail;
+    readonly retryAfterMs?: number;
+    readonly executionPhase?: AgentEventExecutionPhase;
+    readonly retryState?: AgentEventRetryState;
     readonly permissionGranted?: boolean;
     readonly permissionDangerous?: boolean;
-    readonly runStatus?: string;
+    readonly permissionDestructive?: boolean;
+    readonly toolSource?: AgentEventToolSource;
+    readonly toolTitle?: string;
+    readonly toolDisplay?: ToolCallDisplay;
+    readonly toolProgressMode?: 'indeterminate';
+    readonly parentId?: string;
+    readonly entryId?: string;
+    readonly clientMessageId?: string;
+    readonly internal?: boolean;
+    readonly assistantMessageId?: string;
+    readonly createdAt: string;
+    readonly sessionId?: string;
+    readonly costUsd?: number;
+    readonly durationMs?: number;
     readonly usage?: AgentTokenUsage;
     readonly modelProvider?: string;
     readonly modelId?: string;
+    readonly attachments?: readonly AgentEventAttachment[];
+    readonly preTokens?: number;
+    readonly postTokens?: number;
+    readonly runStatus?: string;
+    /** Runner attempt id；仅完整事件权限可见。 */
+    readonly runId?: string;
+    /** 本次运行的实际工作目录；仅完整事件权限可见。 */
+    readonly cwd?: string;
   }
 
   export interface Events {
@@ -3193,6 +3275,11 @@ declare module 'finch' {
     readonly network?: boolean;
     /** 是否允许执行 shell 命令。 */
     readonly shell?: boolean;
+    /**
+     * 是否允许读取所有 Agent Session 的完整运行事件。
+     * 完整事件可能包含对话、thinking、工具输入、工具结果和附件信息。
+     */
+    readonly agentEvents?: 'full';
     /** 可访问的密钥 key 或末尾通配符前缀；通过系统安全存储加密。 */
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
