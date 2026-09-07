@@ -2128,14 +2128,24 @@ declare module 'finch' {
   /** CanvasWindow 的显式生命周期；`disposed` 是不可逆终态。 */
   export type CanvasWindowState = 'creating' | 'ready' | 'visible' | 'hidden' | 'disposing' | 'disposed';
 
+  export interface CanvasBounds { x: number; y: number; width: number; height: number; }
+  export type CanvasWindowConstraint = 'display-work-area' | 'all-displays' | 'none';
+
   /** 在一次主进程控制中提交的窗口模式更新。 */
   export interface CanvasWindowUpdate {
-    bounds?: { x?: number; y?: number; width?: number; height?: number };
+    bounds?: Partial<CanvasBounds>;
     alwaysOnTop?: boolean;
     alwaysOnTopLevel?: AlwaysOnTopLevel;
     alwaysOnTopRelativeLevel?: number;
     clickThrough?: boolean;
     visible?: boolean;
+    opacity?: number;
+    resizable?: boolean;
+    minimumSize?: { width: number; height: number };
+    maximumSize?: { width: number; height: number };
+    fullscreen?: boolean;
+    constraint?: CanvasWindowConstraint;
+    keyboardCapture?: boolean;
   }
 
   /**
@@ -2179,6 +2189,11 @@ declare module 'finch' {
     alwaysOnTopRelativeLevel?: number;
     /** 传给脚本 `init({ initialData })` 的初始数据（会 JSON 序列化）。 */
     initialData?: unknown;
+    /** 初始透明度，范围 0～1。 */
+    opacity?: number;
+    minimumSize?: { width: number; height: number };
+    maximumSize?: { width: number; height: number };
+    constraint?: CanvasWindowConstraint;
   }
 
   /**
@@ -2193,7 +2208,10 @@ declare module 'finch' {
    *   frame(dt) {},                 // 可选：连续动画，受 frameRate 限制
    *   render(ctx2d) {},             // 可选：按需绘制；与 frame 二选一
    *   resize(width, height) {},
-   *   onPointer(e) {},              // { type:'move'|'down'|'up'|'cancel', pointerId, x, y, screenX, screenY, button, buttons, pointerType }
+   *   onPointer(e) {},              // Pointer 坐标、按钮、修饰键、pointerType、pressure
+   *   onWheel(e) {},                // deltaX/deltaY/deltaZ/deltaMode 与逻辑坐标
+   *   onKeyDown(e) {}, onKeyUp(e) {},
+   *   onContextMenu(e) {}, onInputReset() {},
    *   onMessage(msg) {},            // 来自 Host 段 postMessage
    *   suspend(reason) {},           // hidden/system/sleep 时暂停
    *   resume(reason) {},            // visible/system/wake 时恢复；首帧 dt 已重置
@@ -2204,7 +2222,8 @@ declare module 'finch' {
    * 外壳注入的 `finch` 桥（Canvas 段可调用）：
    * `finch.postMessage(msg)` / `finch.window.startDrag()` / `finch.window.setAlwaysOnTop(v, level?, relativeLevel?)` /
    * `finch.window.setPosition(x,y)` / `finch.window.getDisplays()` / `finch.window.setClickThrough(v)` /
-   * `finch.window.close()`；按需绘制可调用 `finch.canvas.invalidate()`。
+   * `finch.window.constrainTo(mode)` / `finch.input.setKeyboardCapture(v)` / `finch.assets.loadImage(path)` /
+   * `finch.audio.create(path)` / `finch.window.close()`；按需绘制可调用 `finch.canvas.invalidate()`。
    */
   export interface CanvasWindowMotion {
     kind: 'linear' | 'spring';
@@ -2215,6 +2234,72 @@ declare module 'finch' {
     bounds?: 'display-work-area' | 'all-displays';
     /** Main 侧原生移动频率，默认 30。 */
     frameRate?: 30 | 60;
+  }
+
+  export interface CanvasDisplayRect {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  }
+
+  export interface CanvasDisplay {
+    readonly id: string;
+    readonly bounds: CanvasDisplayRect;
+    readonly workArea: CanvasDisplayRect;
+    readonly scaleFactor?: number;
+  }
+
+  export interface CanvasPointerEvent {
+    type: 'move' | 'down' | 'up' | 'cancel';
+    pointerId: number; x: number; y: number; screenX: number; screenY: number;
+    button: number; buttons: number; pointerType: string; pressure: number;
+    altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean;
+  }
+  export interface CanvasWheelEvent {
+    deltaX: number; deltaY: number; deltaZ: number; deltaMode: number; x: number; y: number;
+    altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean;
+  }
+  export interface CanvasKeyEvent {
+    key: string; code: string; location: number; repeat: boolean;
+    altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean;
+  }
+  export interface CanvasAudioHandle extends Disposable {
+    play(): Promise<void>;
+    pause(): void;
+    stop(): void;
+    setVolume(value: number): void;
+  }
+  export interface CanvasRuntimeApi {
+    postMessage(message: unknown): void;
+    window: {
+      startDrag(): void; endDrag(): void; setAlwaysOnTop(value: boolean, level?: AlwaysOnTopLevel, relativeLevel?: number): void;
+      setPosition(x: number, y: number): void; setOpacity(value: number): void; setResizable(value: boolean): void;
+      setMinimumSize(width: number, height: number): void; setMaximumSize(width: number, height: number): void;
+      setFullscreen(value: boolean): void; constrainTo(constraint: CanvasWindowConstraint): void;
+      getDisplays(): readonly CanvasDisplay[]; onDidChangeDisplays: Event<readonly CanvasDisplay[]>;
+      setClickThrough(value: boolean): void; close(): void;
+    };
+    input: { setKeyboardCapture(enabled: boolean): void; focus(): void; blur(): void };
+    assets: { resolve(path: string): string; loadScript(path: string): Promise<void>; loadImage(path: string, options?: { signal?: AbortSignal }): Promise<HTMLImageElement> };
+    audio: { create(path: string, options?: { loop?: boolean; volume?: number }): CanvasAudioHandle };
+    canvas: { define(definition: CanvasRuntimeDefinition): void; invalidate(): void };
+  }
+  export interface CanvasRuntimeDefinition {
+    init?(context: { canvas: HTMLCanvasElement; ctx2d: CanvasRenderingContext2D; width: number; height: number; dpr: number; finch: CanvasRuntimeApi; initialData: unknown }): void;
+    frame?(dt: number): void;
+    render?(ctx2d: CanvasRenderingContext2D): void;
+    resize?(width: number, height: number): void;
+    onPointer?(event: CanvasPointerEvent): void;
+    onWheel?(event: CanvasWheelEvent): void;
+    onKeyDown?(event: CanvasKeyEvent): void;
+    onKeyUp?(event: CanvasKeyEvent): void;
+    onContextMenu?(event: { x: number; y: number }): void;
+    onInputReset?(): void;
+    onMessage?(message: unknown): void;
+    suspend?(reason: 'hidden'): void;
+    resume?(reason: 'visible'): void;
+    dispose?(): void;
   }
 
   export interface CanvasWindow {
@@ -2230,6 +2315,19 @@ declare module 'finch' {
     setPosition(x: number, y: number): void;
     setSize(width: number, height: number): void;
     setClickThrough(value: boolean): void;
+    getBounds(): Promise<CanvasBounds>;
+    setOpacity(value: number): void;
+    setResizable(value: boolean): void;
+    setMinimumSize(width: number, height: number): void;
+    setMaximumSize(width: number, height: number): void;
+    setFullscreen(value: boolean): void;
+    constrainTo(constraint: CanvasWindowConstraint): void;
+    setKeyboardCapture(enabled: boolean): void;
+    /** 显示器新增、移除或布局指标变化后的完整快照。 */
+    readonly onDidChangeDisplays: Event<readonly CanvasDisplay[]>;
+    readonly onDidChangeBounds: Event<CanvasBounds>;
+    readonly onDidChangeFocus: Event<boolean>;
+    readonly onDidChangeFullscreen: Event<boolean>;
     /** 原子更新单个窗口；bounds 在原生层只调用一次 setBounds。 */
     update(options: CanvasWindowUpdate): Promise<void>;
     /** Main 侧执行持续移动，新 motion 会覆盖旧 motion。 */
