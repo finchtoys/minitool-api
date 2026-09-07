@@ -2111,7 +2111,11 @@ declare module 'finch' {
         pop(count?: number): Promise<void>;
         /**
          * 用户点了更靠前的面包屑。宿主已经把后面的层级截断，页面负责把自己的
-         * 路由退回 `id` 对应的位置；`id` 为空串表示回到页面首页。
+         * 路由退回 `id` 对应的位置；`id` 为空串表示回到页面首页——包括用户
+         * 点击最前面固定的「小程序」段，或点击 `panel.setTitle()`/`setIcon()`
+         * 设置的本页固定标题段，这两段都不接受自定义点击行为，效果都是清空
+         * 本页已 push 的所有层级并触发这条空 `id` 回调。宿主不会重载或改动
+         * 页面自己的 webview，回首页完全要靠这里的回调自己实现。
          */
         onNavigate(listener: (payload: { id: string; index: number }) => void): () => void;
         /**
