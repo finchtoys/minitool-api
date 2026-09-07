@@ -2173,7 +2173,10 @@ declare module 'finch' {
     resizable?: boolean;
     /** 是否鼠标穿透（点击透传到下层窗口），默认 false。 */
     clickThrough?: boolean;
-    /** 允许窗口越出屏幕工作区，默认 false。 */
+    /**
+     * @deprecated 兼容提示：请改用 `constraint: 'none'`；旧接口删除版本未定。
+     * 允许窗口越出屏幕工作区，默认 false。
+     */
     allowOffscreen?: boolean;
     /** 不在 Mission Control（调度中心）中显示，默认 false。仅 macOS，其他平台忽略。 */
     hiddenInMissionControl?: boolean;
@@ -2337,9 +2340,15 @@ declare module 'finch' {
     postMessage(message: unknown): Promise<void>;
     /** Canvas 段 → Host 段：脚本内 `finch.postMessage()` 触发。 */
     readonly onDidReceiveMessage: Event<unknown>;
-    /** 窗口被移动（拖动结束或 setPosition）时触发。 */
+    /**
+     * @deprecated 兼容提示：请改用 `onDidChangeBounds`；旧接口删除版本未定。
+     * 窗口被移动（拖动结束或 setPosition）时触发。
+     */
     readonly onDidMove: Event<{ x: number; y: number }>;
-    /** 窗口尺寸变化时触发。 */
+    /**
+     * @deprecated 兼容提示：请改用 `onDidChangeBounds`；旧接口删除版本未定。
+     * 窗口尺寸变化时触发。
+     */
     readonly onDidResize: Event<{ width: number; height: number }>;
     /** 实际可见性变化时触发。 */
     readonly onDidChangeVisibility: Event<boolean>;
