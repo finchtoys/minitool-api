@@ -587,6 +587,8 @@ declare module 'finch' {
      * 无 Space 上下文的会话为 `undefined`。
      */
     readonly contextSpaceId?: string;
+    /** 回传创建时传入的 `topic`（如有），见 `SessionCreateOptions.topic`。 */
+    readonly topic?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
     readonly createdAt: string;
     readonly updatedAt: string;
@@ -634,6 +636,13 @@ declare module 'finch' {
      */
     readonly space?: { readonly spaceId: string };
     readonly title?: string;
+    /**
+     * 给一批兄弟会话打上统一的主题标签——同一批 fan-out 的每次 `create()`
+     * 都传相同字符串，发起会话的子任务下拉就会把它们归为一组展示，而不是
+     * 混在一起只看标题。服务端会按显示宽度裁剪到 40（CJK 记 2，约等于中文
+     * 20 字 / 英文 40 字符）；不传则落入下拉的默认「其他」分组。
+     */
+    readonly topic?: string;
     /**
      * @deprecated 已废弃且被忽略。Agent 角色由目标容器的
      * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
