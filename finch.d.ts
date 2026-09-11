@@ -457,6 +457,13 @@ declare module 'finch' {
      * `sessions.create({ space })`。
      */
     readonly spaces: Spaces;
+    /**
+     * 用户已启用、可用模型的只读列表（modelKey、别名、provider 名称）。需要
+     * permissions.sessions（与 `ctx.sessions` 共用同一权限门），主要用途是
+     * 在创建 Session 前找到一个合法的 `modelKey` 传给
+     * `sessions.create({ model })`。
+     */
+    readonly models: Models;
     readonly sessionContainers: {
       /**
        * @deprecated 旧版容器级设置菜单，只会出现在该容器的会话页头部。
@@ -722,6 +729,12 @@ declare module 'finch' {
     readonly idempotencyKey: string;
   }
 
+  /**
+   * 模型思考/推理档位。与内部 `ReasoningEffort` 一致，这里单独声明为字面量
+   * 联合类型，使本文件保持自包含（不跨包引用 Finch 内部类型）。
+   */
+  export type SessionReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
   export interface SessionCreateOptions {
     /**
      * 会话所在容器，须在 manifest contributes.sessionContainers 中声明。若
@@ -771,6 +784,20 @@ declare module 'finch' {
     readonly activity?: MinitoolSessionActivity;
     /** 默认 acceptCalls；可显式设为 ask。 */
     readonly permissionMode?: 'ask' | 'acceptCalls';
+    /**
+     * 显式指定本次会话使用的模型，例如小程序自己的设置界面让用户选好的模型。
+     * 优先级高于其它所有来源（容器默认模型、`context: 'caller'` 继承的模型、
+     * Space/全局默认模型）。`modelKey` 必须是已启用的 `provider:model` 键
+     * （与 `AppCall listModels` 展示的格式一致）；未知或已禁用的键会直接
+     * 抛错。不传 `model` 时行为与之前完全一致——沿用容器配置的模型，
+     * 再回退 Space/全局默认。
+     */
+    readonly model?: {
+      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      readonly modelKey: string;
+      /** 思考/推理档位，仅当模型支持时生效。 */
+      readonly reasoningEffort?: SessionReasoningEffort;
+    };
     /** 提供时，与 Session 创建原子接收；失败不会留下 ghost Session。 */
     readonly initialMessage?: SessionUserMessage;
   }
@@ -798,6 +825,39 @@ declare module 'finch' {
   export interface Spaces {
     /** 列出用户创建的所有 Space，按最近打开时间排序。 */
     list(): Promise<SpaceSummary[]>;
+  }
+
+  /**
+   * 一个已启用、可用模型的只读摘要——与用户在 Composer 模型菜单里能选到的
+   * 集合一致。用于在调用 `sessions.create({ model: { modelKey } })` 之前
+   * 发现一个合法的 `modelKey`。
+   */
+  export interface ModelSummary {
+    /** `provider:model` 键，可直接传给 `sessions.create({ model })`。 */
+    readonly modelKey: string;
+    /** 稳定的 provider id（与 `modelKey` 的前缀一致）。 */
+    readonly providerId: string;
+    /** provider 的可读展示名称，例如 "Anthropic"、"OpenAI"。 */
+    readonly providerName: string;
+    /** 原始 model id（与 `modelKey` 的后缀一致）。 */
+    readonly modelId: string;
+    /** 展示名称——用户设置了别名时用别名，否则用模型默认名称。 */
+    readonly name: string;
+    /** 用户设置的别名（如有；已经折叠进上面的 `name`）。 */
+    readonly alias?: string;
+    /** 该模型是否支持扩展思考/推理。 */
+    readonly supportsThinking: boolean;
+    /** 轻量快速模型，适合「快速对话」模式。 */
+    readonly instant?: boolean;
+    /** 该模型在「思考」模式下被选中时应用的默认推理档位。 */
+    readonly defaultReasoningEffort?: SessionReasoningEffort;
+    /** 该模型支持的推理档位子集；未设置表示支持全部档位。 */
+    readonly reasoningLevels?: SessionReasoningEffort[];
+  }
+
+  export interface Models {
+    /** 列出用户已启用、可用的全部模型（别名、id、provider 名称）。 */
+    list(): Promise<ModelSummary[]>;
   }
 
   export interface SessionSendOptions {
