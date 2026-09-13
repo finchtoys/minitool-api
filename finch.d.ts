@@ -766,6 +766,14 @@ declare module 'finch' {
      */
     readonly topic?: string;
     /**
+     * 显式把新会话挂到本小程序自己拥有的某个父 Session 下，以便在父会话的
+     * 子任务树中显示。它只改变会话树归属，不继承 cwd、模型、权限或对话历史；
+     * 若要继承调用者的运行上下文，请使用 `context: 'caller'`。当本次调用正
+     * 处于一个可信的 Agent 调用上下文时，Finch 自动记录该调用者为父节点，
+     * 并优先于这里指定的值。传入未知、其它小程序或用户拥有的 Session 会报错。
+     */
+    readonly parentSessionId?: string;
+    /**
      * @deprecated 已废弃且被忽略。Agent 角色由目标容器的
      * `contributes.sessionContainers[].agentProfile` 声明决定并自动生效，
      * 不再由调用方逐个会话指定。传入不会报错（仅打印一条废弃警告，
@@ -888,9 +896,52 @@ declare module 'finch' {
         readonly retryAfterMs: number;
       };
 
+  /** 单个 turn 的 token 用量。字段与 {@link AgentTokenUsage} 一致。 */
+  export interface SessionTurnUsage {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheCreationTokens: number;
+    readonly cacheReadTokens: number;
+  }
+
   export type SessionDurableEvent =
     | { readonly sequence: number; readonly type: 'assistant.message'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly text: string; readonly createdAt: string }
-    | { readonly sequence: number; readonly type: 'turn.completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly createdAt: string }
+    /**
+     * 某个 turn 真正被派发给 Runner 开始执行。`send()` 只表示进入队列，这条事件
+     * 才表示「这个 Agent 开始干活了」——看板类小程序可用它把卡片从「排队中」
+     * 切到「进行中」，并知道实际生效的模型与思考档位（可能来自容器默认或
+     * Space/全局默认，而非调用方显式指定的值）。
+     */
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.started';
+        readonly sessionId: string;
+        readonly turnId: string;
+        /** 本次实际派发使用的 `provider:model` 键。 */
+        readonly modelKey: string;
+        /** 本次实际生效的思考/推理档位（未设置时省略）。 */
+        readonly reasoningEffort?: SessionReasoningEffort;
+        /** 该 turn 从入队到派发的排队时长（毫秒）。 */
+        readonly queuedMs: number;
+        readonly createdAt: string;
+      }
+    | {
+        readonly sequence: number;
+        readonly type: 'turn.completed';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly outputText: string;
+        readonly messageIds: string[];
+        /** 本次 turn 的 token 用量；Runner 未上报时为 undefined。 */
+        readonly usage?: SessionTurnUsage;
+        /** 本次 turn 的估算费用（美元）；Runner 未上报时为 undefined。 */
+        readonly costUsd?: number;
+        /** 本次 turn 的执行耗时（毫秒）；Runner 未上报时为 undefined。 */
+        readonly durationMs?: number;
+        /** 实际使用的 `provider:model` 键；Runner 未上报时为 undefined。 */
+        readonly modelKey?: string;
+        readonly createdAt: string;
+      }
     | { readonly sequence: number; readonly type: 'turn.failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly createdAt: string }
     | {
         readonly sequence: number;
@@ -936,7 +987,19 @@ declare module 'finch' {
   }
 
   export type SessionTurnWaitResult =
-    | { readonly state: 'completed'; readonly sessionId: string; readonly turnId: string; readonly outputText: string; readonly messageIds: string[]; readonly completedAt: string }
+    | {
+        readonly state: 'completed';
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly outputText: string;
+        readonly messageIds: string[];
+        /** 与 `turn.completed` 事件同源的用量/成本/耗时统计。 */
+        readonly usage?: SessionTurnUsage;
+        readonly costUsd?: number;
+        readonly durationMs?: number;
+        readonly modelKey?: string;
+        readonly completedAt: string;
+      }
     | { readonly state: 'failed'; readonly sessionId: string; readonly turnId: string; readonly code: string; readonly retryable: boolean; readonly failedAt: string }
     | { readonly state: 'timeout'; readonly sessionId: string; readonly turnId: string };
 
