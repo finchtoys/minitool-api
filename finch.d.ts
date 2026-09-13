@@ -449,6 +449,10 @@ declare module 'finch' {
     /** 当前 session 信息（只读快照）。 */
     readonly session: SessionInfo;
 
+    /** 发布与读取当前小工具拥有的不可变快照。需要 permissions.artifacts。 */
+    readonly artifacts: Artifacts;
+    /** 协调当前小工具拥有的 Scope、Document、Task 与 Handoff。需要 permissions.collaboration。 */
+    readonly collaboration: Collaboration;
     /** 创建并可靠收发当前小工具自己拥有的 Session。需要 permissions.sessions。 */
     readonly sessions: Sessions;
     /**
@@ -1864,6 +1868,117 @@ declare module 'finch' {
   /** 可安全跨进程传递与持久化的 JSON 值。 */
   export type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
 
+  export type ArtifactSource = { readonly type: 'text'; readonly text: string }
+    | { readonly type: 'json'; readonly value: JsonValue }
+    | { readonly type: 'file'; readonly path: string };
+  export interface ArtifactProducer { readonly sessionId: string; readonly turnId?: string; }
+  export interface ArtifactRef {
+    readonly artifactId: string; readonly scopeId?: string; readonly name: string;
+    readonly contentHash: string; readonly mediaType: string; readonly size: number;
+    readonly sourceType: ArtifactSource['type']; readonly metadata?: JsonValue;
+    readonly producer?: ArtifactProducer; readonly createdAt: string;
+  }
+  export interface ArtifactPublishOptions {
+    readonly scopeId?: string; readonly name: string; readonly source: ArtifactSource;
+    readonly mediaType?: string; readonly metadata?: JsonValue; readonly producer?: ArtifactProducer;
+    readonly idempotencyKey: string;
+  }
+  export interface ArtifactListOptions { readonly scopeId?: string; readonly limit?: number; }
+  export type ArtifactContent = { readonly type: 'text'; readonly text: string; readonly mediaType: string }
+    | { readonly type: 'json'; readonly value: JsonValue; readonly mediaType: string }
+    | { readonly type: 'file'; readonly path: string; readonly mediaType: string };
+  export interface Artifacts {
+    publish(options: ArtifactPublishOptions): Promise<ArtifactRef>;
+    get(artifactId: string): Promise<ArtifactRef | undefined>;
+    list(options?: ArtifactListOptions): Promise<ArtifactRef[]>;
+    read(artifactId: string): Promise<ArtifactContent>;
+  }
+
+  export type CollaborationRetention = 'session' | 'project' | 'persistent';
+  export interface CollaborationScope {
+    readonly scopeId: string; readonly label: string; readonly retention: CollaborationRetention;
+    readonly metadata?: JsonValue; readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationScopeCreateOptions {
+    readonly label: string; readonly retention?: CollaborationRetention; readonly metadata?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationDocument {
+    readonly documentId: string; readonly scopeId: string; readonly name: string; readonly kind: string;
+    readonly revision: number; readonly artifactId: string; readonly summary?: string;
+    readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationDocumentCreateOptions {
+    readonly scopeId: string; readonly name: string; readonly kind: string; readonly initialArtifactId: string;
+    readonly summary?: string; readonly idempotencyKey: string;
+  }
+  export interface CollaborationDocumentUpdateOptions {
+    readonly documentId: string; readonly baseRevision: number; readonly artifactId: string;
+    readonly summary?: string; readonly idempotencyKey: string;
+  }
+  export type CollaborationDocumentUpdateResult = { readonly state: 'updated'; readonly document: CollaborationDocument }
+    | { readonly state: 'conflict'; readonly current: CollaborationDocument };
+  export type CollaborationTaskState = 'open' | 'claimed' | 'blocked' | 'completed' | 'cancelled';
+  export interface CollaborationTask {
+    readonly taskId: string; readonly scopeId: string; readonly title: string; readonly summary?: string;
+    readonly state: CollaborationTaskState; readonly version: number; readonly assigneeSessionId?: string;
+    readonly leaseExpiresAt?: string; readonly refs?: JsonValue; readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationTaskCreateOptions {
+    readonly scopeId: string; readonly title: string; readonly summary?: string; readonly refs?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationTaskUpdateOptions {
+    readonly taskId: string; readonly expectedVersion: number; readonly state?: Exclude<CollaborationTaskState, 'claimed'>;
+    readonly summary?: string; readonly refs?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationTaskClaimOptions {
+    readonly taskId: string; readonly assignee: { readonly sessionId: string }; readonly expectedVersion: number;
+    readonly leaseMs: number; readonly idempotencyKey: string;
+  }
+  export interface CollaborationTaskRenewLeaseOptions {
+    readonly taskId: string; readonly assignee: { readonly sessionId: string }; readonly expectedVersion: number; readonly leaseMs: number;
+  }
+  export type CollaborationTaskMutationResult = { readonly state: 'updated'; readonly task: CollaborationTask }
+    | { readonly state: 'conflict'; readonly current: CollaborationTask };
+  export type CollaborationHandoffState = 'created' | 'accepted' | 'rejected' | 'superseded' | 'expired';
+  export interface CollaborationDocumentRef { readonly documentId: string; readonly revision: number; }
+  export interface CollaborationHandoff {
+    readonly handoffId: string; readonly scopeId: string; readonly from: ArtifactProducer;
+    readonly to: { readonly sessionId: string }; readonly taskId?: string; readonly summary: string;
+    readonly artifactIds: string[]; readonly documentRefs: CollaborationDocumentRef[]; readonly data?: JsonValue;
+    readonly state: CollaborationHandoffState; readonly version: number; readonly decisionSummary?: string;
+    readonly createdAt: string; readonly updatedAt: string;
+  }
+  export interface CollaborationHandoffCreateOptions {
+    readonly scopeId: string; readonly from: ArtifactProducer; readonly to: { readonly sessionId: string };
+    readonly taskId?: string; readonly summary: string; readonly artifactIds?: string[];
+    readonly documentRefs?: CollaborationDocumentRef[]; readonly data?: JsonValue; readonly idempotencyKey: string;
+  }
+  export interface CollaborationHandoffDecisionOptions { readonly handoffId: string; readonly expectedVersion: number; readonly summary?: string; }
+  export type CollaborationHandoffMutationResult = { readonly state: 'updated'; readonly handoff: CollaborationHandoff }
+    | { readonly state: 'conflict'; readonly current: CollaborationHandoff };
+  export interface Collaboration {
+    readonly scopes: {
+      create(options: CollaborationScopeCreateOptions): Promise<CollaborationScope>; get(scopeId: string): Promise<CollaborationScope | undefined>; list(): Promise<CollaborationScope[]>;
+    };
+    readonly documents: {
+      create(options: CollaborationDocumentCreateOptions): Promise<CollaborationDocument>; get(documentId: string): Promise<CollaborationDocument | undefined>;
+      list(scopeId: string): Promise<CollaborationDocument[]>; update(options: CollaborationDocumentUpdateOptions): Promise<CollaborationDocumentUpdateResult>;
+    };
+    readonly tasks: {
+      create(options: CollaborationTaskCreateOptions): Promise<CollaborationTask>; get(taskId: string): Promise<CollaborationTask | undefined>;
+      list(scopeId: string): Promise<CollaborationTask[]>; update(options: CollaborationTaskUpdateOptions): Promise<CollaborationTaskMutationResult>;
+      claim(options: CollaborationTaskClaimOptions): Promise<CollaborationTaskMutationResult>; renewLease(options: CollaborationTaskRenewLeaseOptions): Promise<CollaborationTaskMutationResult>;
+    };
+    readonly handoffs: {
+      create(options: CollaborationHandoffCreateOptions): Promise<CollaborationHandoff>; get(handoffId: string): Promise<CollaborationHandoff | undefined>;
+      list(scopeId: string): Promise<CollaborationHandoff[]>; accept(options: CollaborationHandoffDecisionOptions): Promise<CollaborationHandoffMutationResult>;
+      reject(options: CollaborationHandoffDecisionOptions): Promise<CollaborationHandoffMutationResult>;
+    };
+  }
+  export type DeliveryTarget = { readonly kind: 'scope'; readonly scopeId: string }
+    | { readonly kind: 'artifact'; readonly artifactId: string }
+    | { readonly kind: 'document'; readonly documentId: string; readonly revision?: number };
+
   export interface DeliverySetOptions {
     readonly title: string;
     /**
@@ -1874,6 +1989,8 @@ declare module 'finch' {
      */
     readonly detail?: string;
     readonly icon?: string;
+    /** 指向当前小工具拥有的 Artifact、Scope 或 Document。 */
+    readonly target?: DeliveryTarget;
     /** 点击此 Delivery 行打开 Panel App 时带入的上下文。 */
     readonly payload?: JsonValue;
   }
@@ -3540,6 +3657,10 @@ declare module 'finch' {
     readonly secrets?: string[];
     /** 可通过 `ctx.oauth` 配置的 provider id 列表。 */
     readonly oauth?: string[];
+    /** 是否允许发布与读取当前小工具拥有的不可变 Artifact。 */
+    readonly artifacts?: boolean;
+    /** 是否允许使用当前小工具拥有的 Collaboration 数据。 */
+    readonly collaboration?: boolean;
     /** 是否允许创建并收发当前小工具自己拥有的 Session。 */
     readonly sessions?: boolean;
     /**
