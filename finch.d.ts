@@ -865,6 +865,16 @@ declare module 'finch' {
     readonly defaultReasoningEffort?: SessionReasoningEffort;
     /** 该模型支持的推理档位子集；未设置表示支持全部档位。 */
     readonly reasoningLevels?: SessionReasoningEffort[];
+    /**
+     * 该模型品牌图标的 {@link IconRef}（形如 `"model:claude"`），与 Finch
+     * 自己 Composer 模型菜单展示的图标完全一致——可以原样填进任意接受
+     * IconRef 的字段（`ComposerActionMenuItem.iconName`、
+     * `AppPanelMenuItem.icon`、`ctx.ui` 菜单项的 `icon` 等），小程序自建的
+     * 模型选择菜单就能复用 Finch 内置的 Claude/Codex/DeepSeek 等品牌 SVG，
+     * 不需要自己维护一份图标资源。未识别出品牌（自定义/小众模型）时为
+     * `undefined`，此时应显示一个通用兜底图标。
+     */
+    readonly icon?: IconRef;
   }
 
   export interface Models {
@@ -875,6 +885,23 @@ declare module 'finch' {
   export interface SessionSendOptions {
     /** Phase 1 仅支持严格 FIFO queue。 */
     readonly delivery?: 'queue';
+    /**
+     * 为这一条消息切换 Session 使用的模型——例如小程序自带一个模型选择器，
+     * 用户随时切换模型后，下一条消息就该换到新模型，而不必重建 Session。
+     * 语义与 `SessionCreateOptions.model` 一致：`modelKey` 必须是已启用的
+     * `provider:model` 键（参考 `ctx.models.list()`），未知或已禁用会直接
+     * 抛错，整条 `send()` 调用失败、不入队。校验通过后立刻持久化为该
+     * Session 的当前模型，对本条及之后的消息生效，直到下次显式传入新值。
+     * 不传 `model` 时完全不改变现状——沿用 Session 当前配置的模型，也就是
+     * 沿用上一条消息实际生效的模型（若上一条消息也没传，则一路回溯到
+     * `create()` 时决定的模型）。
+     */
+    readonly model?: {
+      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      readonly modelKey: string;
+      /** 思考/推理档位，仅当模型支持时生效；省略则清除已设置的档位。 */
+      readonly reasoningEffort?: SessionReasoningEffort;
+    };
   }
 
   export type SessionSendReceipt =
