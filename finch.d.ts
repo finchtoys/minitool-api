@@ -2809,6 +2809,11 @@ declare module 'finch' {
     /**
      * 提供一个能力。仅允许 manifest `provides.capabilities` 中声明的名字。
      * 建议通过 `options.version` 声明 semver 版本，便于消费方协商兼容性。
+     *
+     * 成员名以 `host:` 开头表示这是一组**只给 Finch 宿主界面使用**的管理成员（例如
+     * 工具箱里该小程序自己的设置面板）。宿主调用时会带上信任标记；其它插件通过
+     * `get()` 拿到的代理调用这些成员会被拒绝。普通能力成员不要使用这个前缀，也不要
+     * 依赖 `host:` 成员——它属于 Finch 内部界面契约，不随公开 API 一起保证兼容。
      */
     provide(name: string, implementation: CapabilityImpl, options?: CapabilityProvideOptions): Disposable;
     /** 获取一个能力代理。仅允许 manifest `requires.capabilities` 中声明的名字。 */
