@@ -686,6 +686,8 @@ declare module 'finch' {
   /** 由 Finch 写入的小工具 Session 元数据；owner 与 minitoolId 不可伪造。 */
   export interface MinitoolSessionDescriptor {
     readonly sessionId: string;
+    /** 当前会话标题（侧栏显示的名称）；未命名时不存在。与分组标签 `topic` 不同。 */
+    readonly title?: string;
     readonly owner: { readonly type: 'minitool'; readonly minitoolId: string };
     /**
      * `minitool` 会话位于本工具声明的容器内。`space` 会话被创建到某个具体
