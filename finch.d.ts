@@ -100,10 +100,24 @@ declare module 'finch' {
     appendCodeblock(value: string, language?: string): MarkdownString;
   }
 
+  /** `Navigation.openChat()` 的可选项。 */
+  export interface NavigationOpenChatOptions {
+    /** 预填到输入框的草稿文本；保持可编辑，永不自动发送。 */
+    readonly text: string;
+  }
+
   /** Finch 宿主级导航；后端 `ctx.navigation` 与页面 `window.finch.navigation` 共用此接口。 */
   export interface Navigation {
     /** 在当前 Finch 窗口打开已有 Session。 */
     openSession(sessionId: string): Promise<void>;
+    /**
+     * 在当前 Finch 窗口新开一个对话，并把可编辑草稿预填到输入框。
+     *
+     * 落在 Home Composer（只有用户真正发送时才创建 Session），自动聚焦输入框，
+     * 不会替用户发送，因此不会启动 Agent。草稿随导航一起送达，界面切换完成后
+     * 依然存在，无需轮询或固定延时。页面（Webview）调用需要真实用户手势。
+     */
+    openChat(options: NavigationOpenChatOptions): Promise<void>;
   }
 
   // ════════════════════════════════════════════════════════════════════════════
