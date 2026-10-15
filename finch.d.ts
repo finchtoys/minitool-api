@@ -861,13 +861,21 @@ declare module 'finch' {
    * 发现一个合法的 `modelKey`。
    */
   export interface ModelSummary {
-    /** `provider:model` 键，可直接传给 `sessions.create({ model })`。 */
+    /** 从 ctx.models.list() 获取的不透明身份派生 handle；不可用上游请求名拼接。 */
     readonly modelKey: string;
+    /** 严格五字段身份，name 是原始名称而非 alias；无凭据或连接地址。 */
+    readonly modelRef: {
+      readonly providerId: string;
+      readonly requestModel: string;
+      readonly name: string;
+      readonly contextLength: number;
+      readonly protocol: 'anthropic-messages' | 'openai-completions' | 'openai-responses' | 'openai-codex-responses';
+    };
     /** 稳定的 provider id（与 `modelKey` 的前缀一致）。 */
     readonly providerId: string;
     /** provider 的可读展示名称，例如 "Anthropic"、"OpenAI"。 */
     readonly providerName: string;
-    /** 原始 model id（与 `modelKey` 的后缀一致）。 */
+    /** 兼容保留的不透明派生 handle（modelKey 后缀），不是上游请求名或持久 id。 */
     readonly modelId: string;
     /** 展示名称——用户设置了别名时用别名，否则用模型默认名称。 */
     readonly name: string;
