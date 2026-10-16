@@ -863,11 +863,11 @@ declare module 'finch' {
   export interface ModelSummary {
     /** 从 ctx.models.list() 获取的不透明身份派生 handle；不可用上游请求名拼接。 */
     readonly modelKey: string;
-    /** 严格五字段身份，name 是原始名称而非 alias；无凭据或连接地址。 */
+    /** 四元身份：providerId、requestModel、contextLength、最终 protocol；name 仅为可选展示快照，不参与身份。无凭据或连接地址。 */
     readonly modelRef: {
       readonly providerId: string;
       readonly requestModel: string;
-      readonly name: string;
+      readonly name?: string;
       readonly contextLength: number;
       readonly protocol: 'anthropic-messages' | 'openai-completions' | 'openai-responses' | 'openai-codex-responses';
     };
