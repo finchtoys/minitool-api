@@ -815,13 +815,14 @@ declare module 'finch' {
     /**
      * 显式指定本次会话使用的模型，例如小程序自己的设置界面让用户选好的模型。
      * 优先级高于其它所有来源（容器默认模型、`context: 'caller'` 继承的模型、
-     * Space/全局默认模型）。`modelKey` 必须是已启用的 `provider:model` 键
-     * （与 `AppCall listModels` 展示的格式一致）；未知或已禁用的键会直接
-     * 抛错。不传 `model` 时行为与之前完全一致——沿用容器配置的模型，
-     * 再回退 Space/全局默认。
+     * Space/全局默认模型）。`modelKey` 必须来自 `ctx.models.list()`，是稳定的
+     * `providerId:modelId`；未知或已禁用的键会直接抛错。省略 `model` 时
+     * 按既有容器、调用者和 Space/全局默认规则确定选择。
+     * 创建只确定选择，不固定未来消息的参数；每条新消息（含 initialMessage）
+     * 在接受时冻结当时参数，排队和重试沿用同一快照。
      */
     readonly model?: {
-      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      /** 直接使用 ctx.models.list() 返回的 modelKey，不按请求名或显示名拼接。 */
       readonly modelKey: string;
       /** 思考/推理档位，仅当模型支持时生效。 */
       readonly reasoningEffort?: SessionReasoningEffort;
@@ -861,22 +862,20 @@ declare module 'finch' {
    * 发现一个合法的 `modelKey`。
    */
   export interface ModelSummary {
-    /** 从 ctx.models.list() 获取的不透明身份派生 handle；不可用上游请求名拼接。 */
+    /** 从 ctx.models.list() 获取的稳定 providerId:modelId；不可用上游请求名拼接。 */
     readonly modelKey: string;
-    /** 四元身份：providerId、requestModel、contextLength、最终 protocol；name 仅为可选展示快照，不参与身份。无凭据或连接地址。 */
-    readonly modelRef: {
-      readonly providerId: string;
-      readonly requestModel: string;
-      readonly name?: string;
-      readonly contextLength: number;
-      readonly protocol: 'anthropic-messages' | 'openai-completions' | 'openai-responses' | 'openai-codex-responses';
-    };
     /** 稳定的 provider id（与 `modelKey` 的前缀一致）。 */
     readonly providerId: string;
     /** provider 的可读展示名称，例如 "Anthropic"、"OpenAI"。 */
     readonly providerName: string;
-    /** 兼容保留的不透明派生 handle（modelKey 后缀），不是上游请求名或持久 id。 */
+    /** 稳定配置 ID（modelKey 后缀）；编辑名称、请求名、上下文或协议不换 ID。 */
     readonly modelId: string;
+    /** 当前上游请求名，不是配置 ID；只读参数，不可用于构造 modelKey。 */
+    readonly requestModel: string;
+    /** 当前上下文窗口上限（token）；只读参数，不代表历史 turn 的执行快照。 */
+    readonly contextLength: number;
+    /** 当前最终生效协议（含 Provider 继承）；编辑后 modelKey 保持不变。 */
+    readonly protocol: 'anthropic-messages' | 'openai-completions' | 'openai-responses' | 'openai-codex-responses';
     /** 展示名称——用户设置了别名时用别名，否则用模型默认名称。 */
     readonly name: string;
     /** 用户设置的别名（如有；已经折叠进上面的 `name`）。 */
@@ -912,16 +911,16 @@ declare module 'finch' {
     /**
      * 为这一条消息切换 Session 使用的模型——例如小程序自带一个模型选择器，
      * 用户随时切换模型后，下一条消息就该换到新模型，而不必重建 Session。
-     * 语义与 `SessionCreateOptions.model` 一致：`modelKey` 必须是已启用的
-     * `provider:model` 键（参考 `ctx.models.list()`），未知或已禁用会直接
-     * 抛错，整条 `send()` 调用失败、不入队。校验通过后立刻持久化为该
-     * Session 的当前模型，对本条及之后的消息生效，直到下次显式传入新值。
-     * 不传 `model` 时完全不改变现状——沿用 Session 当前配置的模型，也就是
-     * 沿用上一条消息实际生效的模型（若上一条消息也没传，则一路回溯到
-     * `create()` 时决定的模型）。
+     * `modelKey` 使用 `ctx.models.list()` 返回的稳定选择；新消息接受时发现
+     * 未知、禁用或无法解析的选择会直接抛错，不入队，也不回退其它模型。
+     * 新消息成功接受后，显式选择持久化为 Session 的当前选择，对后续消息生效。
+     * 省略 `model` 沿用 Session 当前已接受的选择，不等于上一条已执行的模型。
+     * 每条新消息接受时冻结当时参数；排队/重试不重捕获，但执行仍校验可用性、
+     * 协议、连接和账号边界。同一 modelKey 在不同 turn 中的参数可能不同。
+     * 相同 idempotencyKey 的重复发送返回原回执，不改选择或重新冻结参数。
      */
     readonly model?: {
-      /** `provider:model` 键，例如 `"anthropic:claude-sonnet-4-5"`。 */
+      /** 直接使用 ctx.models.list() 返回的 modelKey，不按请求名或显示名拼接。 */
       readonly modelKey: string;
       /** 思考/推理档位，仅当模型支持时生效；省略则清除已设置的档位。 */
       readonly reasoningEffort?: SessionReasoningEffort;
@@ -972,7 +971,7 @@ declare module 'finch' {
         readonly type: 'turn.started';
         readonly sessionId: string;
         readonly turnId: string;
-        /** 本次实际派发使用的 `provider:model` 键。 */
+        /** 本次实际派发使用的稳定配置键；相同键不代表不同 turn 的参数相同。 */
         readonly modelKey: string;
         /** 本次实际生效的思考/推理档位（未设置时省略）。 */
         readonly reasoningEffort?: SessionReasoningEffort;
@@ -993,7 +992,7 @@ declare module 'finch' {
         readonly costUsd?: number;
         /** 本次 turn 的执行耗时（毫秒）；Runner 未上报时为 undefined。 */
         readonly durationMs?: number;
-        /** 实际使用的 `provider:model` 键；Runner 未上报时为 undefined。 */
+        /** 实际使用的稳定配置键；Runner 未上报时为 undefined，不是参数快照。 */
         readonly modelKey?: string;
         readonly createdAt: string;
       }
