@@ -1485,10 +1485,9 @@ declare module 'finch' {
     readonly risk?: 'low' | 'medium' | 'high';
     /**
      * 工具 schema 暴露策略：
-     * - `startup` 默认值；每个新会话启动时注入工具定义。
-     * - `dynamic` 不进入新会话初始工具表；仅在插件运行中注册/更新后注入活跃会话。
-     *
-     * 适用于 MCP server tools、按需发现的大量工具等场景，避免新会话工具表膨胀。
+     * - `dynamic` 默认值；不进入新会话初始工具表，由 ToolSearch 按需激活。
+     *   平台统一采用按需加载，避免每启用一个小程序就把它的全部工具 schema 灌注进每一轮请求。
+     * - `startup` 每个新会话启动时注入工具定义；只给高频、缺它就做不了事的工具用。
      */
     readonly exposure?: ToolExposure;
     /**
@@ -2909,11 +2908,32 @@ declare module 'finch' {
     | 'compact_boundary'
     | 'session_status';
 
+  export interface AgentContextBreakdown {
+    /** 系统注入段的估算 token 数。 */
+    readonly system: number;
+    /** 项目规则段：cwd 的 AGENTS.md 规则链与 Space 规则。 */
+    readonly rules: number;
+    /** 小程序工具 schema 与提示段。 */
+    readonly minitools: number;
+    /** skills 清单段。 */
+    readonly skills: number;
+    /** 用户消息。 */
+    readonly user: number;
+    /** 助手输出。 */
+    readonly assistant: number;
+    /** 工具结果。 */
+    readonly tools: number;
+  }
+
   export interface AgentTokenUsage {
     readonly inputTokens: number;
     readonly outputTokens: number;
     readonly cacheCreationTokens: number;
     readonly cacheReadTokens: number;
+    /** 平均生成速度（tokens/s）：流式实时估算、完成后校准，排除工具等待并保留最近读数。 */
+    readonly generationTokensPerSecond?: number;
+    /** 最近一次真实请求的上下文分类估算；缺省表示无更新，null 表示压缩后明确失效。 */
+    readonly contextBreakdown?: AgentContextBreakdown | null;
   }
 
   export interface AgentEventErrorDetail {
@@ -3643,7 +3663,12 @@ declare module 'finch' {
     readonly displayName?: LocalizedString;
     /** 扩展说明。新扩展建议写默认字符串，把多语言文案放到 `i18n/<locale>.json`。 */
     readonly description?: LocalizedString;
-    /** 一句话动态 system prompt。新扩展建议写默认字符串，把多语言文案放到 `i18n/<locale>.json`。 */
+    /**
+     * 一句话索引：只回答「什么时候该想到这个小工具」，启用后每轮注入 system prompt。
+     * 操作步骤、参数规则、示例等长文不要写在这里 —— 放进打包技能的 SKILL.md
+     * （contributes.skills: true），模型调用 Skills invoke 时才加载。
+     * 平台不做长度截断，超长部分会按轮计费。新扩展建议写默认字符串，多语言文案放 `i18n/<locale>.json`。
+     */
     readonly systemPrompt?: LocalizedString;
     /** 插件详情页 README 上方展示的 prompt 引导语。 */
     readonly promptGuides?: readonly MiniToolPromptGuide[];
