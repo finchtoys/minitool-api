@@ -1019,7 +1019,23 @@ declare module 'finch' {
         readonly createdAt: string;
       };
 
+  /** Live-only; sessionId is the origin, channelSessionId/wait.sessionId the real channel. */
+  export type SessionBotWaitEvent = {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly originSessionId: string;
+    readonly channelSessionId: string;
+    readonly botRequestId: string;
+    readonly actor: { botId: string; title: string };
+    readonly requestId: string;
+    readonly createdAt: string;
+  } & (
+    | { readonly type: 'bot.waiting'; readonly wait: SessionBotWait }
+    | { readonly type: 'bot.wait_resolved'; readonly resolvedBy: SessionWaitResolver }
+  );
+
   export type SessionBridgeEvent =
+    | SessionBotWaitEvent
     | SessionDurableEvent
     /** 仅实时投递，不写入 listEvents()；断线后使用最终消息恢复。 */
     | { readonly type: 'assistant.delta'; readonly sessionId: string; readonly turnId: string; readonly messageId: string; readonly delta: string; readonly createdAt: string };
@@ -1117,6 +1133,13 @@ declare module 'finch' {
 
   export type SessionWait = SessionPermissionWait | SessionQuestionWait | SessionFormWait;
 
+  /** sessionId remains the real execution channel, not the origin Session. */
+  export type SessionBotWait = SessionWait & {
+    readonly originSessionId: string;
+    readonly botRequestId: string;
+    readonly actor: { botId: string; title: string };
+  };
+
   export type SessionWaitResponse =
     | { readonly kind: 'permission'; readonly allow: boolean }
     /** key 为每个问题的 `header`。 */
@@ -1181,6 +1204,11 @@ declare module 'finch' {
      * 返回的 `SessionWait` 已带 `sessionId`，无需额外字段。
      */
     listWaits(sessionId?: string): Promise<SessionWait[]>;
+    /** Active related Bot waits. Requires sessions + sessionInteractions + botInteractions. */
+    listBotWaits(originSessionId: string): Promise<SessionBotWait[]>;
+    /** Relay real user confirmation only; no self-approval, secret forms or permanent grants.
+     * Optional mode affects only this execution channel; auto/bypass are rejected at runtime. */
+    respondToBotWait(originSessionId: string, sessionId: string, requestId: string, response: SessionWaitResponse, permissionMode?: 'ask' | 'acceptCalls'): Promise<SessionWaitRespondResult>;
     /** 以程序方式应答等待。需要 permissions.sessionInteractions。 */
     respondToWait(sessionId: string, requestId: string, response: SessionWaitResponse): Promise<SessionWaitRespondResult>;
     /**
@@ -3822,6 +3850,9 @@ declare module 'finch' {
      * `destructiveInteractions`。
      */
     readonly sessionInteractions?: boolean | 'all';
+    /** Read/answer active Bot waits related to owned origin Sessions. Requires sessions
+     * and sessionInteractions (true or all). Explicit new grant; true remains owner-only. */
+    readonly botInteractions?: boolean;
     /**
      * 是否允许代替用户批准**不可逆**（destructive）权限卡。
      * 必须在 `sessionInteractions` 之上单独授权：读卡、拒绝是可恢复的，批准
