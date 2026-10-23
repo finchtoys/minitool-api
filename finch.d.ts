@@ -1598,6 +1598,13 @@ declare module 'finch' {
     readonly mode?: ComposerFillMode;
   }
 
+  /** 页面向 Composer 同时插入普通附件与可编辑正文的选项。 */
+  export interface ComposerContextOptions {
+    readonly text?: string;
+    /** 默认 append 保留已有文字；replace 只覆盖正文，不删除已有附件。 */
+    readonly mode?: ComposerFillMode;
+  }
+
   /** 内联 Composer confirm 条的选项。 */
   export interface ComposerConfirmOptions {
     /** confirm 条上显示的提示文字。 */
@@ -2475,14 +2482,37 @@ declare module 'finch' {
     postMessage(message: unknown): void;
     onMessage(listener: (message: unknown) => void): () => void;
     /**
-     * Attaches contexts into the Composer draft this panel's scope owns.
-     * Works on `'session'` scope (writes into that Session's draft) and
-     * `'home'` scope (writes into the current Space's Home Composer draft —
-     * see `AppPanelEnvMessage.view`). Rejects on `'container'` scope or
-     * any legacy/unrecognized scope, since neither has a Composer draft to
-     * attach into.
+     * 该面板 scope 所属 Composer 的写入入口。两者都要求真实用户手势，
+     * 且都在 `'container'`、`appView` 或无法识别的 scope 上 reject
+     * （这些 scope 没有 Composer 草稿）。
      */
-    readonly composer: { addContexts(contexts: readonly ComposerContextDraft[]): Promise<{ added: number }> };
+    readonly composer: {
+      /**
+       * 向已挂载的目标输入框插入上下文。Session 精确匹配 sessionId，Home
+       * 精确匹配 Space 草稿。普通图片/文件可用 options.text 同时插入可编辑
+       * 正文（默认 append）；annotation token 不可与 options.text 混用。
+       * Promise 仅在输入框实际接收并应用后 resolve。没有目标输入框、恢复中、
+       * 数量超限或附件落盘失败时 reject，不会仅写缓存就显示成功。
+       * 老版本不支持 options；与 fillText 同批新增，调用前请检测 fillText 存在。
+       */
+      addContexts(contexts: readonly ComposerContextDraft[], options?: ComposerContextOptions): Promise<{ added: number }>;
+      /**
+       * 把文字写进当前输入框（可继续编辑，不会自动发送）。
+       *
+       * 将文字交给该 scope 的已挂载输入框；不可用时 reject。若要同时插入
+       * 图片/附件与正文，请用一次 addContexts(contexts, { text, mode })，不要
+       * 分别 await 两次调用（否则存在半成功和用户手势失效的问题）。
+       *
+       * `@[path]` 提及与 `/skill` 指令会渲染成 token，和 ComposerAction 的
+       * `actions.composer.fill()` 一致。
+       *
+       * @example
+       * await window.finch.composer.addContexts([imageContext], {
+       *   text: '把背景换成夜景', mode: 'append',
+       * });
+       */
+      fillText(text: string, options?: ComposerFillOptions): Promise<void>;
+    };
     readonly capture: { capturePage(options?: { mode?: 'viewport' | 'selection'; rect?: { x: number; y: number; width: number; height: number } }): Promise<{ name: string; mimeType: 'image/png'; content: string }> };
     /** Controls the current Panel tab from inside its page. */
     readonly panel: {
