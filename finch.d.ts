@@ -1628,7 +1628,8 @@ declare module 'finch' {
   export interface ComposerActionComposerActions {
     /**
      * 向当前激活的 Composer 输入框填入文字。
-     * `/skill` 指令和 `@[path]` 文件引用会渲染为富文本 token。
+     * `/skill` 指令、`@[path]` 与 `[quote src="/path/image.png"]说明[/quote]` 会渲染为引用/token。
+     * 纯文本引用用 `[quote]文本[/quote]`；现有调用保持兼容。
      */
     fill(text: string, options?: ComposerFillOptions): Promise<void>;
     /**
@@ -2504,7 +2505,9 @@ declare module 'finch' {
        * 分别 await 两次调用（否则存在半成功和用户手势失效的问题）。
        *
        * `@[path]` 提及与 `/skill` 指令会渲染成 token，和 ComposerAction 的
-       * `actions.composer.fill()` 一致。
+       * `actions.composer.fill()` 一致。新引用首选 `[quote src="/path/image.png"]说明[/quote]`，
+       * src 可为本地绝对路径或 HTTP(S) URL，正文仅作用户说明；无来源用 `[quote]文本[/quote]`。
+       * 路径含引号/与号时使用 &quot; / &amp;；旧 addContexts 接口保留兼容。
        *
        * @example
        * await window.finch.composer.addContexts([imageContext], {
