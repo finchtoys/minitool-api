@@ -3011,7 +3011,9 @@ declare module 'finch' {
     readonly sdkCode?: string | number;
     readonly requestId?: string;
     readonly retryAfterMs?: number;
-    readonly origin?: 'provider' | 'gateway' | 'unknown';
+    readonly origin?: 'provider' | 'gateway' | 'runtime' | 'unknown';
+    /** Local runtime recovery cause; absent for provider/network failures. */
+    readonly runtimeReason?: 'gateway_unresponsive' | 'configuration_changed' | 'shutdown';
     readonly transport?: 'http' | 'sse' | 'websocket';
     readonly phase?: 'connect' | 'headers' | 'stream' | 'response';
   }
