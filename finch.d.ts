@@ -616,11 +616,13 @@ declare module 'finch' {
   export type AppearanceBackgroundTone = 'brightest' | 'bright' | 'balanced' | 'dark' | 'darkest';
 
   export interface AppearanceSetHomeBackgroundOptions {
-    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。首页尚未配置背景时必填。 */
+    /** 改哪一套背景：`home`（默认）或 `chat`（所有非 Space 的聊天窗）。Space 背景跟随单个 Space 自己。 */
+    scope?: 'home' | 'chat';
+    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。该 scope 尚未配置背景时必填。 */
     imagePath?: string;
     placement?: AppearanceBackgroundPlacement;
     tone?: AppearanceBackgroundTone;
-    /** 移除首页背景，恢复为纯色主题底。 */
+    /** 移除该 scope 的背景，恢复为纯色主题底。 */
     clear?: boolean;
   }
 
@@ -641,11 +643,13 @@ declare module 'finch' {
    *   placement: 'fill',
    *   tone: 'dark',
    * });
+   * // 聊天窗单独一套背景
+   * await ctx.appearance.setHomeBackground({ scope: 'chat', imagePath: '/Users/alice/Pictures/paper.jpg' });
    */
   export interface Appearance {
     /** 至少传一项：theme、customTheme、fontSize、uiFontFamily、monoFontFamily、showThinking。 */
     setTheme(options: AppearanceSetThemeOptions): Promise<void>;
-    /** 只支持首页背景；Chat/Space 背景已在内部实现但尚未对外开放。 */
+    /** 设置首页或聊天窗背景（`scope: 'home' | 'chat'`，默认首页）。Space 背景跟随单个 Space 自己。 */
     setHomeBackground(options: AppearanceSetHomeBackgroundOptions): Promise<void>;
   }
 
