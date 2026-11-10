@@ -856,9 +856,26 @@ declare module 'finch' {
     readonly directoryPath?: string;
   }
 
+  export interface SpacesSetBackgroundOptions {
+    /** 目标 Space 的 id（由 `ctx.spaces.list()` 得到）。 */
+    spaceId: string;
+    /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。这个 Space 还没背景时必填。 */
+    imagePath?: string;
+    placement?: AppearanceBackgroundPlacement;
+    /** 移除这个 Space 的背景；之后这个 Space 的会话窗不显示背景（各层互相独立，不回落全局）。 */
+    clear?: boolean;
+  }
+
   export interface Spaces {
     /** 列出用户创建的所有 Space，按最近打开时间排序。 */
     list(): Promise<SpaceSummary[]>;
+    /**
+     * 设置 / 清除某个 Space 会话窗的背景图。需要在 manifest 声明并被授予
+     * `permissions.appearance`。图片复制进这个 Space 自己的
+     * `.finch/skins`（没有目录的独立 Space 落在 Agent Home 的 `spaces/<id>`）。
+     * 四层背景互相独立：这个 Space 没配就是不显示背景，不会拿全局会话背景顶上。
+     */
+    setBackground(options: SpacesSetBackgroundOptions): Promise<void>;
   }
 
   /**
