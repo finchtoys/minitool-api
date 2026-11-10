@@ -621,6 +621,7 @@ declare module 'finch' {
     /** 本地图片绝对路径（PNG/JPEG/WebP/GIF/AVIF）。该 scope 尚未配置背景时必填。 */
     imagePath?: string;
     placement?: AppearanceBackgroundPlacement;
+    /** 明暗档位：**只对 `home` 生效**。对话窗（`scope: 'chat'`）的明暗是固定表达，不接受调整，传了也一律忽略。 */
     tone?: AppearanceBackgroundTone;
     /** 移除该 scope 的背景，恢复为纯色主题底。 */
     clear?: boolean;
@@ -649,7 +650,7 @@ declare module 'finch' {
   export interface Appearance {
     /** 至少传一项：theme、customTheme、fontSize、uiFontFamily、monoFontFamily、showThinking。 */
     setTheme(options: AppearanceSetThemeOptions): Promise<void>;
-    /** 设置首页或聊天窗背景（`scope: 'home' | 'chat'`，默认首页）。Space 背景跟随单个 Space 自己。 */
+    /** 设置首页或聊天窗背景（`scope: 'home' | 'chat'`，默认首页）。Space 背景跟随单个 Space 自己。`tone` 只影响首页。 */
     setHomeBackground(options: AppearanceSetHomeBackgroundOptions): Promise<void>;
   }
 
