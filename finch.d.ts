@@ -568,13 +568,16 @@ declare module 'finch' {
 
   /**
    * 自定义皮肤的最终颜色 token；只设置需要的字段，其余继承自 `base`。
-   * 分组：表面（bgRoot=app/窗口外层背景兼 bgMain 兜底，bgMain=主聊天/页面背景，
-   * bgSidebar=悬浮侧栏专用；停靠态侧栏透明并复用 appShell/main 背景，
-   * bgElevated=卡片/弹层/输入框表面），交互高亮（bgHover=列表/按钮 hover，
-   * bgActive=按下/选中态），文字（textPrimary=正文，textSecondary=次要/元信息，
-   * textTertiary=弱化提示/图标），强调色（accent=品牌/操作色——必须够深/够饱和，
-   * 使其上的白色文字仍清晰可读；accentDim=浅色强调底纹），border=描边。颜色接受
-   * `#hex`/`rgb()`/`hsl()`/`oklch()`/`color-mix()`，但 `bgRoot`/`bgMain`
+   *
+   * 表面颜色分**三条轴**，不要把它们当成一条深浅线：
+   * 1. 层次轴 `bgRoot`（app/窗口外层，兼 `bgMain` 兜底）→ `bgMain`（主聊天/页面）
+   *    → `bgSidebar`（悬浮侧栏专用；停靠态侧栏透明并复用主背景）
+   *    → `bgElevated`（卡片 / 弹层 / 输入框 / 气泡）。
+   * 2. 交互轴 `bgHover` / `bgActive`：叠在当前表面上的薄纱，不是一种表面。
+   * 3. 强调轴 `accent`（品牌/操作色，必须够深/够饱和，使其上的白字仍可读）
+   *    与 `accentDim`（浅色强调底纹）；`border` 是描边，不参与层次。
+   *
+   * 颜色接受 `#hex`/`rgb()`/`hsl()`/`oklch()`/`color-mix()`，但 `bgRoot`/`bgMain`
    * 建议写 `#hex` 或 `rgb()`——它们还会绘制原生 OS 窗口控制按钮，无法解析
    * `oklch()`/`color-mix()` 时会回退到默认浅色/深色。
    */
@@ -582,8 +585,11 @@ declare module 'finch' {
     bgRoot?: string;
     bgMain?: string;
     bgSidebar?: string;
+    /** 卡片 / 弹层 / 气泡的表面色。**必须与 `bgMain` 拉开一档**（浅色更暗、深色更亮），差得太小会被自动推深一档。 */
     bgElevated?: string;
+    /** 悬停态薄纱。**推荐不设置**：省略时由 `bgElevated` 派生一层百分之几的薄纱，强度自动跟主题走，风格最一致。 */
     bgHover?: string;
+    /** 按下态薄纱。**推荐不设置**，同 `bgHover`。 */
     bgActive?: string;
     textPrimary?: string;
     textSecondary?: string;
@@ -647,11 +653,31 @@ declare module 'finch' {
    * // 聊天窗单独一套背景
    * await ctx.appearance.setHomeBackground({ scope: 'chat', imagePath: '/Users/alice/Pictures/paper.jpg' });
    */
+  /** `ctx.appearance.getTheme()` 的结果：当前生效的外观偏好（只读）。 */
+  export interface AppearanceThemeSnapshot {
+    themePreference: AppearanceThemePreference;
+    /** 当前自定义皮肤；没用自定义皮肤时为 undefined。 */
+    customTheme?: AppearanceCustomTheme;
+  }
+
   export interface Appearance {
     /** 至少传一项：theme、customTheme、fontSize、uiFontFamily、monoFontFamily、showThinking。 */
     setTheme(options: AppearanceSetThemeOptions): Promise<void>;
-    /** 设置首页或聊天窗背景（`scope: 'home' | 'chat'`，默认首页）。Space 背景跟随单个 Space 自己。`tone` 只影响首页。 */
+    /** 设置首页或聊天窗背景（`scope: 'home' | 'chat'`，默认首页）。Space 背景见 `ctx.spaces.setBackground`。`tone` 只影响首页。 */
     setHomeBackground(options: AppearanceSetHomeBackgroundOptions): Promise<void>;
+    /**
+     * 读当前主题偏好与自定义皮肤。做「微调当前皮肤」的小程序先取这份，改一两个
+     * 字段后再 `setTheme({ customTheme })`，不必自己重建整套配色。
+     *
+     * @example
+     * const { customTheme } = await ctx.appearance.getTheme();
+     * if (customTheme) {
+     *   await ctx.appearance.setTheme({
+     *     customTheme: { ...customTheme, colors: { ...customTheme.colors, accent: '#22c55e' } },
+     *   });
+     * }
+     */
+    getTheme(): Promise<AppearanceThemeSnapshot>;
   }
 
   /** 当前 Finch 暴露的小程序 API surface 探针。 */
