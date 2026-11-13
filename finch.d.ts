@@ -754,6 +754,19 @@ declare module 'finch' {
      * 无 Space 上下文的会话为 `undefined`。
      */
     readonly contextSpaceId?: string;
+    /**
+     * 解析后的所属 Space id：`space` placement 取 `placement.spaceId`，容器/普通
+     * 会话继承 Space 上下文时取 `contextSpaceId`。是上述两个字段的便捷投影，
+     * 不必自己判断；会话没有 Space 时为 `undefined`。
+     */
+    readonly spaceId?: string;
+    /** `spaceId` 对应 Space 的展示名；解析不到时不存在。 */
+    readonly spaceName?: string;
+    /**
+     * 承载这个会话的助理（小程序容器 Bot / 用户 Bot）展示名。普通对话没有绑定
+     * 任何 Bot 时为 `undefined`。仅作展示，不授予任何 Bot 能力。
+     */
+    readonly botName?: string;
     /** 回传创建时传入的 `topic`（如有），见 `SessionCreateOptions.topic`。 */
     readonly topic?: string;
     readonly state: { readonly pinned: boolean; readonly archived: boolean };
