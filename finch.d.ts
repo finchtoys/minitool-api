@@ -881,6 +881,36 @@ declare module 'finch' {
   }
 
   /**
+   * 只读会话目录里的一条记录。字段全部是展示元数据，不含对话正文、
+   * 工作目录或任何可执行能力。
+   */
+  export interface SessionDirectoryEntry {
+    readonly sessionId: string;
+    /** 当前会话标题；未命名会话不存在（不会用「新会话」之类占位）。 */
+    readonly title?: string;
+    /** 所属 Space id；会话不在任何 Space 内时不存在。 */
+    readonly spaceId?: string;
+    /** 该 Space 的展示名；Space 解析不到时不存在。 */
+    readonly spaceName?: string;
+    /** 承载该会话的助理 id（小程序容器 Bot / 用户 Bot）；无绑定 Bot 时不存在。 */
+    readonly botId?: string;
+    /** 该助理的展示名；无绑定 Bot 时不存在。 */
+    readonly botName?: string;
+    /** 用户可见生命周期状态。 */
+    readonly state: { readonly pinned: boolean; readonly archived: boolean };
+    readonly updatedAt: string;
+  }
+
+  export interface SessionDirectoryListOptions {
+    /** 默认 false：归档会话不进入目录。 */
+    readonly includeArchived?: boolean;
+    /** 返回条数上限；省略表示不截断。 */
+    readonly limit?: number;
+    /** 跳过的条数，默认 0。 */
+    readonly offset?: number;
+  }
+
+  /**
    * 用户已创建的某个 Space 的只读摘要。用于在调用
    * `sessions.create({ space: { spaceId } })` 之前发现可用的 Space id/name，
    * 无需本工具正运行在该 Space 内。
@@ -1253,6 +1283,23 @@ declare module 'finch' {
      * acceptCalls 仍不会自动批准危险操作；不支持 auto。
      */
     setPermissionMode(sessionId: string, permissionMode: 'ask' | 'acceptCalls'): Promise<void>;
+    /**
+     * 只读会话目录：返回 `{ sessionId, title, spaceId, spaceName, botId, botName,
+     * state, updatedAt }`。
+     *
+     * 未声明（或未获准）`permissions.sessionDirectory: "all"` 时，本方法**不报错**，
+     * 只是降级为「只看自己拥有的会话」的目录；不能看到任何其它会话。
+     * 声明并获准后，返回用户全部会话（含其它小程序、Bot 与普通对话创建的），
+     * 默认不含归档会话，按 `updatedAt` 降序。仍然拿不到对话正文、cwd，也不能
+     * 对别人的会话 send/取消/应答。
+     */
+    listDirectory(options?: SessionDirectoryListOptions): Promise<SessionDirectoryEntry[]>;
+    /**
+     * 按 id 查单条会话元数据，与 `listDirectory()` 同一权限、同一字段。
+     * 未获准 `permissions.sessionDirectory: "all"` 时，非自有会话返回
+     * `undefined`（不报错）；会话不存在时同样返回 `undefined`。
+     */
+    getMeta(sessionId: string): Promise<SessionDirectoryEntry | undefined>;
     /** 等待指定 turn 完成或失败，无需 sleep/polling。 */
     waitForTurn(sessionId: string, turnId: string, options?: SessionWaitOptions): Promise<SessionTurnWaitResult>;
     onDidReceiveEvent(listener: (event: SessionBridgeEvent) => unknown): Disposable;
@@ -3149,6 +3196,14 @@ declare module 'finch' {
     readonly assistantMessageId?: string;
     readonly createdAt: string;
     readonly sessionId?: string;
+    /**
+     * 该会话的当前标题（侧栏显示名）。仅当本小程序声明并获准
+     * `permissions.sessionDirectory: "all"` 时才提供；未获准时字段不存在，
+     * 行为与今天完全一致（不静默扩权）。未命名会话也不会用占位标题。
+     */
+    readonly sessionTitle?: string;
+    /** 该会话所属 Space id，与 `sessionTitle` 同一权限、一同提供（不在 Space 内时不存在）。 */
+    readonly spaceId?: string;
     readonly costUsd?: number;
     readonly durationMs?: number;
     readonly usage?: AgentTokenUsage;
