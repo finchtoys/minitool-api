@@ -255,7 +255,8 @@ declare module 'finch' {
 
     /** Finch 内置 Browser Panel。每次调用在当前 Panel scope 新建一个 Browser Tab。 */
     readonly browser: {
-      open(url: string): Promise<void>;
+      /** `options.fullscreen` 让新 tab 在 Panel 全屏下打开（只在打开时生效）。 */
+      open(url: string, options?: PanelFullscreenOption): Promise<void>;
     };
 
     /**
@@ -279,6 +280,19 @@ declare module 'finch' {
        * 仅传入要比较的路径/ref；右侧 Panel 或弹窗由用户的「改动与文件预览」设置决定。
        */
       openDiff(request: AppViewDiffRequest): Promise<void>;
+      /**
+       * 打开当前 scope 的题外话（侧聊）tab。Finch 按界面按钮同一条路径新建或复用
+       * 侧聊会话，这个调用只请求把它展示出来。`options.fullscreen` 全屏打开。
+       *
+       * 需要真实 Agent Session scope——Home 或容器 scope 上没有可以归属的父会话。
+       */
+      openSideChat(options?: SideChatOpenOptions): Promise<void>;
+      /**
+       * 在当前 Panel scope 打开另一个小程序声明的 Panel App——和用户从启动器点进去
+       * 的是同一个 tab（single 实例复用规则也一致）。与 `window.finch.appView.openApp()`
+       * 不同：这里打开的是右侧 Panel tab，不是目标的应用级整页，也不需要目标声明授权。
+       */
+      openMiniToolPanel(extensionId: string, options?: MiniToolPanelOpenOptions): Promise<void>;
       /**
        * 打开 `contributes.appPanel` 声明的唯一 Panel App。
        * 声明决定页面来源、标题、图标与工具栏；此调用只决定 single/multiple
@@ -2472,6 +2486,12 @@ declare module 'finch' {
     readonly instanceMode?: 'single' | 'multiple';
     /** 跟随当前 Session Panel Tab 保存的打开上下文。 */
     readonly payload?: JsonValue;
+    /**
+     * 打开后让 Panel 进入全屏（呈现选中的 Panel tab），而不是分栏。只在打开时
+     * 生效：single 实例被重复打开时同样会置全屏，用户之后自己退出算他的选择。
+     * 这不是 `contributes.appView`。
+     */
+    readonly fullscreen?: boolean;
   }
 
   export interface AppPanel {
@@ -2561,8 +2581,8 @@ declare module 'finch' {
 
   /** Host-rendered Diff input. Finch chooses Panel or modal from the user's settings. */
   export type AppViewDiffRequest =
-    | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string }
-    | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string };
+    | { readonly type: 'files'; readonly leftPath: string; readonly rightPath: string; readonly title?: string; readonly fullscreen?: boolean }
+    | { readonly type: 'git'; readonly repoPath: string; readonly base: string; readonly target: string; readonly title?: string; readonly fullscreen?: boolean };
 
   /** App View 面包屑中由页面自己拥有的一层（一条内部路由）。 */
   export interface AppViewPageLevel {
@@ -2584,7 +2604,34 @@ declare module 'finch' {
   export interface FilePreviewOptions {
     /** HTML/HTM 默认在浏览器打开；传入 `code` 可查看源码。 */
     readonly htmlPreview?: HtmlPreviewMode;
+    /**
+     * 打开预览时让 Panel 直接进入全屏（Panel 盖住会话区），而不是分栏。
+     * 只在打开那一刻生效、不随 tab 持久化，用户随时可以自己退出全屏。
+     */
+    readonly fullscreen?: boolean;
   }
+
+  /**
+   * 「打开时进入 Panel 全屏」参数。
+   *
+   * `true` 让该 Panel scope 进入全屏（呈现选中的 Panel tab，即会话区被 Panel
+   * 占满）。这**不是** `contributes.appView`：应用级左侧栏整页是另一个界面，
+   * 不会通过这个参数打开。
+   */
+  export interface PanelFullscreenOption {
+    readonly fullscreen?: boolean;
+  }
+
+  /** {@link MiniToolContext.ui.openMiniToolPanel} 的参数。 */
+  export interface MiniToolPanelOpenOptions extends PanelFullscreenOption {
+    /** 本次打开覆盖目标声明的实例策略。 */
+    readonly instanceMode?: 'single' | 'multiple';
+    /** 传给目标 Panel App 的可序列化打开上下文。 */
+    readonly payload?: JsonValue;
+  }
+
+  /** {@link MiniToolContext.ui.openSideChat} 的参数。 */
+  export type SideChatOpenOptions = PanelFullscreenOption;
 
   /** Shape exposed as `window.finch` inside a trusted Webview Panel page. */
   export interface WebviewBridgeApi {
