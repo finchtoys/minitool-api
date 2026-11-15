@@ -2612,6 +2612,44 @@ declare module 'finch' {
   }
 
   /**
+   * 多图预览里的一张图。页面只给地址，字节由 Finch 自己读。
+   *
+   * 没有裸 base64 这一档：本地文件给绝对路径，内存里的图给 `data:` URL。
+   */
+  export interface ImagePreviewItemInput {
+    /** 本地绝对路径，或 `https:` / `data:` / `finch-file:` URL。 */
+    readonly src: string;
+    /** 顶栏标题，也用于判断要不要显示格式胶囊；缺省取文件名。 */
+    readonly name?: string;
+    /** 格式提示（如 `image/png`）；给不出来时 Finch 从扩展名推断。 */
+    readonly mimeType?: string;
+  }
+
+  /** {@link WebviewBridgeApi.appView.openImagePreview} 的参数。 */
+  export interface OpenImagePreviewOptions {
+    /** 图片总数，1–500；超出上限会 reject，让页面自己分批。 */
+    readonly count: number;
+    /** 打开时停在第几张，默认 0；越界自动钳进范围。 */
+    readonly current?: number;
+    /**
+     * 已经拿到的图：`items[n]` 就是第 n 张，`null` 表示「翻到这儿再问我」。
+     * 两种填法都支持——一次给全（全填满）或只给总数（全 `null` 或缺省）。
+     */
+    readonly items?: (ImagePreviewItemInput | null)[];
+    /** 顶栏标题；第一张图还没取回来时先显示它。 */
+    readonly title?: string;
+    /**
+     * 用户翻到没有预取的图时，Finch 回调它取第 `index` 张。
+     * 返回该项即显示；返回 `null` 或抛错则该张显示失败占位（预览不关，
+     * 可以继续往旁边翻）。8 秒内没有应答按失败处理。
+     *
+     * 这个函数留在页面本地、不经过 Bridge，所以必须是快操作：从内存或缓存里
+     * 取地址，不要在这里等一次长 IO。
+     */
+    onRequest?(index: number): ImagePreviewItemInput | null | Promise<ImagePreviewItemInput | null>;
+  }
+
+  /**
    * 「打开时进入 Panel 全屏」参数。
    *
    * `true` 让该 Panel scope 进入全屏（呈现选中的 Panel tab，即会话区被 Panel
@@ -2735,8 +2773,33 @@ declare module 'finch' {
       /**
        * 用 Finch 内置文件预览压入下一层级，返回该层级的句柄 ID。
        * 图片走「看一眼就关」的弹窗，不占层级，此时 `id` 为空串。
+       *
+       * 一次只开一张图。要开一组图、能左右翻页（图片网格的常见需求），
+       * 用 {@link appView.openImagePreview}：同一个弹窗，带 `n/total` 与翻页，
+       * 同样是「看一眼就关」、不占面包屑层级。
        */
       openPreview(path: string, options?: FilePreviewOptions): Promise<{ id: string }>;
+      /**
+       * 用同一个「看一眼就关」的图片弹窗打开一组图，可左右翻页（键盘 ←/→ 也行），
+       * 底部显示 `n/total`。不占面包屑层级，也不需要 `contributes.appView`。
+       *
+       * 两种填法都支持：
+       * - 列表已知：把每张图塞进 `items`，Finch 直接用，零往返；
+       * - 列表很大：只给 `count` 与 `current`，`items` 留空（或 `null` 占位），
+       *   用户翻到哪张 Finch 就回调 `onRequest(index)` 要哪张。
+       *
+       * 引用规则：
+       * - 需要真实用户手势（它打开 UI），和 `openPreview()` 一致；框架里丢了手势
+       *   就把 `await` 去掉，别在 await 之后再调；
+       * - 一个页面同时只有一个图库，再次调用会替换上一个的 `onRequest`；
+       * - 某张取不到（`onRequest` 返回 `null` / 抛错 / 8 秒无应答）时，预览显示
+       *   自己的失败占位并保持可翻——**不会**拿别的图顶替，也不会关掉预览；
+       * - 关掉预览、页面导航或页面崩溃后，尚未回来的请求全部作废，不会再有回调
+       *   落地。
+       *
+       * 返回 `{ galleryId }`：宿主侧的图库标识，用于排查问题，页面不需要持久化它。
+       */
+      openImagePreview(options: OpenImagePreviewOptions): Promise<{ galleryId: string }>;
       /**
        * 用 Finch 内置 Diff 压入下一层级，展示两个本地文件，或 Git repository 中
        * 两个 commit/ref 的多文件差异。允许异步准备本地快照后调用。
