@@ -823,6 +823,8 @@ declare module 'finch' {
      * 支持 `activity: 'background'`，效果与 `space` 一致：不出现在普通对话
      * 列表里，完成时也不弹通知，只能由本 mini tool 自行跳转打开；仅在等待
      * 用户授权/回答/表单时才会提醒。
+     * 容器会话是小程序自己的长期会话，永远无父会话：不继承调用者 parent，
+     * 同时传入的 parentSessionId 仍校验非空与归属，但忽略并记录诊断日志。
      */
     readonly containerId?: string;
     /**
@@ -849,6 +851,7 @@ declare module 'finch' {
      * 若要继承调用者的运行上下文，请使用 `context: 'caller'`。当本次调用正
      * 处于一个可信的 Agent 调用上下文时，Finch 自动记录该调用者为父节点，
      * 并优先于这里指定的值。传入未知、其它小程序或用户拥有的 Session 会报错。
+     * 指定 containerId 时容器会话永远无 parent；此参数仍校验，但忽略并记录日志。
      */
     readonly parentSessionId?: string;
     /**
