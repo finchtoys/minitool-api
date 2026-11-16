@@ -2313,7 +2313,11 @@ declare module 'finch' {
     readonly filter?: FilePickerFilter;
     /** 预填搜索框内容。 */
     readonly initialQuery?: string;
-    /** 覆盖默认根目录。省略时按当前 Space / 全局工作间解析。 */
+    /**
+     * 覆盖默认根目录。省略时从**当前会话的工作目录**开始——Bot 会话是 Bot 的
+     * workdir，Space 会话是该 Space 的目录，普通会话是会话自己的 cwd；三者都拿不到
+     * 才回落到 Finch 主目录。会话归属由宿主决定，小程序通常不需要传这个字段。
+     */
     readonly root?: { readonly directoryPath: string };
     /**
      * 是否允许用户在弹窗内切换到其他 Space 或工作间。默认 `false`——只能在
