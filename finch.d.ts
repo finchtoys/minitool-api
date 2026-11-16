@@ -734,6 +734,11 @@ declare module 'finch' {
     readonly id: string;
     /** session 标题，可为 undefined（未命名 session）。 */
     readonly title: string | undefined;
+    /**
+     * 会话所属 Space：视图上的 Space；Bot 等容器会话没有视图 Space 时，由宿主按
+     * 会话自己的目录归属补出（目录正好等于某个 Space 的 directoryPath 才算）。
+     * 目录不属于任何 Space 时为 undefined。
+     */
     readonly spaceId: string | undefined;
     /** 有效工作目录（Space.directoryPath 或 workspace.projectPath）。 */
     readonly cwd: string | undefined;
