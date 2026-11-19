@@ -46,8 +46,13 @@ declare module 'finch' {
   /**
    * 类型安全的事件，可附加任意数量的监听器。
    *
+   * 只用于真实存在的 `onXxx` 回调（例如 `ctx.app.onDidChange`、`ctx.artifacts` 的
+   * 事件属性）。Finch 目前**没有** `finch.session.onDidChange`：会话切换请读
+   * `ctx.session` 或用 Composer Action 的 `ctx.sessionId`。
+   *
    * @example
-   * finch.session.onDidChange(e => console.log('session changed', e));
+   * const sub = ctx.app.onDidChange(status => ctx.logger.info(status.status));
+   * ctx.subscriptions.push(sub);
    */
   export interface Event<T> {
     (listener: (e: T) => unknown, thisArgs?: unknown, disposables?: Disposable[]): Disposable;
@@ -1698,6 +1703,23 @@ declare module 'finch' {
      * }
      */
     readonly surface: ComposerSurface;
+    /**
+     * 本次 `getBadge` / `getIcon` 所对应的 Session 是不是**刚刚被创建**的。
+     *
+     * 主程序在真正建出会话时（`session_init`）会把该 id 标记为新绑定，并立即让工具栏
+     * 重拉一次 badge；这一轮所有 provider 都会收到 `isNewSession: true`，随后自动清除。
+     * 因此「首页开了一次性状态，进新会话后交接」不需要靠猜「哪个没见过的 sessionId」：
+     *
+     * @example
+     * async getBadge({ surface, sessionId, isNewSession }) {
+     *   if (surface === 'home') return armed ? { text: '计划优先', active: true } : undefined;
+     *   if (isNewSession && armed) { armed = false; setEnabled(sessionId, true); }
+     *   return enabled(sessionId) ? { text: '计划优先', active: true } : undefined;
+     * }
+     *
+     * 只有在会话**真的被创建**时才是 true：恢复会话、续跑、切换会话都不会重复触发。
+     */
+    readonly isNewSession?: boolean;
   }
 
   /**
@@ -1743,6 +1765,20 @@ declare module 'finch' {
     readonly confirmLabel?: string;
     /** 次按钮（取消）文案，默认本地化的「取消」。 */
     readonly cancelLabel?: string;
+    /**
+     * 用户点主按钮时，**由 Finch 直接把这段文字当作这条会话的用户消息发出**，
+     * 不需要用户再按一次发送。它不会经过输入框，也不会清掉用户已经打好的草稿。
+     *
+     * 约束（由宿主强制）：
+     *  - 只支持会话内（`surface === 'session'`）；首页的 confirm 条不会带发送，宁可拒绝也不猜；
+     *  - v1 只发纯文本：`/skill`、`@[path]`、`[quote]` 不会被解析，带 `[quote]` 的内容会被拒绝；
+     *  - 消息会以这段原文出现在用户气泡里，所以它必须是能直接展示给用户的内容；
+     *  - 不支持附件。
+     *
+     * 不需要新增 manifest 权限：用户每轮亲手点这一下就是授权。
+     * 需要知道「到底发出去没有」时请用 {@link ComposerActionComposerActions.confirmAndSend}。
+     */
+    readonly submitText?: string;
   }
 
   /**
@@ -1753,6 +1789,29 @@ declare module 'finch' {
    *    未做选择——按「无决定」处理。
    */
   export type ComposerConfirmResult = 'confirm' | 'cancel' | 'dismissed';
+
+  /** `submitText` 没有发出去的原因。 */
+  export type ComposerConfirmSendFailure =
+    /** 当前会话没有可用模型。 */
+    | 'no-model'
+    /** 输入框正被一张待处理的交互卡占用。 */
+    | 'composer-busy'
+    /** 该会话不在任何窗口里（含首页：首页不开放自动发送）。 */
+    | 'no-viewer'
+    /** 文案为空。 */
+    | 'empty'
+    /** 文案带了 v1 不解析的富标记（如 `[quote]`）。 */
+    | 'invalid';
+
+  /** {@link ComposerActionComposerActions.confirmAndSend} 的回执。 */
+  export interface ComposerConfirmAndSendResult {
+    /** 用户的选择；只有 `'confirm'` 才可能 `sent: true`。 */
+    readonly choice: ComposerConfirmResult;
+    /** 消息是否真的作为本会话的用户消息被接受（已进入时间线 / 待发送队列）。 */
+    readonly sent: boolean;
+    /** `sent: false` 时的原因。 */
+    readonly reason?: ComposerConfirmSendFailure;
+  }
 
   /** Composer 域 helper。 */
   export interface ComposerActionComposerActions {
@@ -1773,6 +1832,29 @@ declare module 'finch' {
      * if (r === 'confirm') { …关闭计划模式、注入文案… }
      */
     confirm(options: ComposerConfirmOptions): Promise<ComposerConfirmResult>;
+    /**
+     * `confirm()` 的加强版：带上 {@link ComposerConfirmOptions.submitText} 时，
+     * 用户点主按钮就直接开始跑，并把「到底发出去没有」如实回执给你。
+     *
+     * 与 `confirm()` + `fill()` 的区别：不需要再让用户按一次发送，也不会把文案
+     * 留在输入框里；被拒绝（没有模型 / 交互卡占用 / 会话不在屏 / 首页）时 `sent`
+     * 为 false 并给出 `reason`，不会有「看起来成功、其实没发出」。
+     *
+     * 旧签名保持兼容，`confirm()` 仍然只返回字符串。
+     *
+     * @example
+     * const r = await actions.composer.confirmAndSend({
+     *   text: '方案已就绪，开始执行？',
+     *   confirmLabel: '执行',
+     *   cancelLabel: '继续规划',
+     *   submitText: '方案已确认，请按上面的计划开始执行',
+     * });
+     * if (r.sent) setEnabled(ctx.sessionId, false);
+     * else if (r.reason) ctx.logger.warn('plan-mode send refused', r.reason);
+     */
+    confirmAndSend(
+      options: ComposerConfirmOptions & { submitText: string },
+    ): Promise<ComposerConfirmAndSendResult>;
   }
 
   /** Composer Action 执行期间可用的 UI 动作。 */
@@ -1984,12 +2066,19 @@ declare module 'finch' {
      * - 返回字符串 → 注入到本轮消息
      * - 返回 `undefined` 或抛出错误 → 本轮不注入
      *
+     * `surface` 说的是**这条用户消息是在哪发出的**：从首页输入框发出的第一条消息是
+     * `'home'`（本次 run 的后续消息一律为 `'session'`），所以「首页开了一次性状态、
+     * 发出去就收尾」的逻辑必须写在 home 分支里。
+     *
      * @example
-     * getReminder({ cwd, surface }) {
-     *   if (surface === 'home') return undefined;   // 首页无需计划约束
-     *   return planningMode
-     *     ? 'This turn is planning only — output a plan, do not execute any tools.'
-     *     : undefined;
+     * getReminder({ cwd, surface, sessionId }) {
+     *   if (surface === 'home') {
+     *     if (!homeArmed) return undefined;
+     *     homeArmed = false;             // 首页一次性状态在这里收尾
+     *     action.notifyUpdate();
+     *     return PLANNING_REMINDER;
+     *   }
+     *   return enabled(sessionId) ? PLANNING_REMINDER : undefined;
      * }
      */
     getReminder?(ctx: ComposerActionContext): Promise<string | undefined>;
