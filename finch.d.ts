@@ -247,6 +247,36 @@ declare module 'finch' {
          */
         notifyUpdate(): void;
       };
+      /**
+       * 在 Composer 上弹出与 `actions.composer.confirm()` **完全同款**的内联 confirm
+       * 条，等待用户选择。它不依赖 ComposerAction 回调，因此工具在 `execute()` 中途也能
+       * 直接调用，不需要把整个 `actions` 传进 `ToolExecutionContext`。
+       *
+       * - **不发送任何消息**：只把 `'confirm' | 'cancel' | 'dismissed'` 交回调用方，
+       *   模型仍在当前回合里，自己决定下一步。这与 `confirmAndSend()` 不同。
+       * - 按会话路由：省略 `sessionId` 时，工具执行中投给该工具所属会话，其余情况投给
+       *   当前聚焦会话。目标会话不在任何窗口 / 没有 viewer 时**立刻**返回 `'dismissed'`。
+       * - **同一会话同一时刻只允许一张**：若该会话已有一张内联 confirm（包括
+       *   `actions.composer.confirm()` 弹出的），本次调用直接返回 `'dismissed'`，
+       *   不会排队，也不会等前一张结束。
+       * - 工具被中止（AbortSignal 触发）时，卡片会被收回，调用方得到 `'dismissed'`，
+       *   不会留下孤儿等待。
+       * - 不需要新增 manifest 权限：用户每轮亲手点这一下就是授权。
+       *
+       * @example
+       * async execute(input, exec) {
+       *   const choice = await ctx.composerActions.requestConfirm({
+       *     text: '这一步会改写 3 个文件，继续？',
+       *     confirmLabel: '继续',
+       *     cancelLabel: '取消',
+       *   });
+       *   if (choice !== 'confirm') {
+       *     return { content: [{ type: 'text', text: '用户未确认，已跳过。' }] };
+       *   }
+       *   // …继续执行
+       * }
+       */
+      requestConfirm(options: ComposerRequestConfirmOptions): Promise<ComposerConfirmResult>;
     };
 
     /**
@@ -1789,6 +1819,26 @@ declare module 'finch' {
    *    未做选择——按「无决定」处理。
    */
   export type ComposerConfirmResult = 'confirm' | 'cancel' | 'dismissed';
+
+  /**
+   * `ctx.composerActions.requestConfirm()` 的选项——在工具执行期间弹出一条内联
+   * confirm，不依赖 ComposerAction 回调，也不发送任何消息。
+   */
+  export interface ComposerRequestConfirmOptions {
+    /**
+     * 目标会话。省略时：工具执行中投给该工具所属的会话；其他回调投给当前聚焦会话。
+     * 目标会话不在任何窗口里时立刻返回 `'dismissed'`，不会挂起等待。
+     */
+    readonly sessionId?: string;
+    /** confirm 条上显示的提示文字；空文案直接返回 `'dismissed'`。 */
+    readonly text: string;
+    /** 主按钮（确认）文案，默认本地化的「确认」。 */
+    readonly confirmLabel?: string;
+    /** 次按钮（取消）文案，默认本地化的「取消」。 */
+    readonly cancelLabel?: string;
+    /** 自动收起超时（毫秒），默认 5 分钟，上限 10 分钟。 */
+    readonly timeoutMs?: number;
+  }
 
   /** `submitText` 没有发出去的原因。 */
   export type ComposerConfirmSendFailure =
